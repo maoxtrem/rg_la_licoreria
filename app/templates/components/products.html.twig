@@ -1,0 +1,76 @@
+<section id="products-view" class="dashboard products-page" hidden>
+    <p class="eyebrow">Operativos / Catálogo</p>
+    <div class="page-heading">
+        <div>
+            <h1>Productos</h1>
+            <p class="muted">Tu catálogo, organizado y siempre a mano.</p>
+        </div>
+        <button id="product-create" class="button" type="button" hidden><span aria-hidden="true">＋</span> Nuevo producto</button>
+    </div>
+
+    <div id="products-feedback" class="notice" role="status" aria-live="polite" hidden></div>
+    <div class="catalog-panel">
+        <div class="catalog-toolbar">
+            <div class="catalog-label"><h2>Catálogo de productos</h2><span id="products-count" class="count-badge">0</span><span id="products-readonly" class="muted small-text" hidden>Solo lectura</span></div>
+            <button id="products-refresh" class="button-secondary button-small" type="button">Actualizar listado</button>
+        </div>
+        <p id="products-loading" class="catalog-state" role="status">Cargando productos…</p>
+        <div id="products-empty" class="catalog-state" hidden>
+            <div class="empty-icon" aria-hidden="true">◇</div>
+            <h2>Tu catálogo empieza aquí.</h2>
+            <p id="products-empty-message" class="muted">Todavía no hay productos registrados.</p>
+        </div>
+        <div id="products-table-container" class="table-scroll" hidden>
+            <table class="products-table">
+                <caption class="sr-only">Catálogo de productos con precios de venta y costo</caption>
+                <thead><tr>
+                    <th scope="col">Producto</th>
+                    <th scope="col">Código de barras</th>
+                    <th scope="col" class="price-cell">Precio de venta</th>
+                    <th scope="col" class="price-cell">Precio de costo</th>
+                    <th id="products-actions-heading" scope="col" class="row-actions">Acciones</th>
+                </tr></thead>
+                <tbody id="products-rows"></tbody>
+            </table>
+        </div>
+        <div id="products-pagination" class="catalog-pagination" hidden>
+            <p id="products-range" class="muted small-text"></p>
+            <nav class="pagination-buttons" aria-label="Páginas de productos">
+                <button id="products-previous" class="button-secondary button-small" type="button">← Anterior</button>
+                <span id="products-page-number" class="small-text" aria-live="polite"></span>
+                <button id="products-next" class="button-secondary button-small" type="button">Siguiente →</button>
+            </nav>
+        </div>
+    </div>
+
+    <dialog id="product-dialog" class="app-dialog" aria-labelledby="product-dialog-title">
+        <div class="dialog-heading"><div><p class="eyebrow">Catálogo de productos</p><h2 id="product-dialog-title">Nuevo producto</h2></div><button id="product-close" class="dialog-close" type="button" aria-label="Cerrar formulario">×</button></div>
+        <p class="muted small-text">Completa los datos del producto. Todos los campos son obligatorios.</p>
+        <div id="product-form-error" class="alert" role="alert" hidden></div>
+        <form id="product-form">
+            <fieldset id="product-fields" class="form-fields">
+                <label for="product-name">Nombre del producto</label>
+                <input id="product-name" name="name" type="text" maxlength="180" required aria-describedby="product-name-error">
+                <p id="product-name-error" class="field-error" hidden></p>
+                <label for="product-barcode">Código de barras</label>
+                <input id="product-barcode" name="barcode" type="text" maxlength="100" required aria-describedby="product-barcode-help product-barcode-error">
+                <p id="product-barcode-help" class="field-help">Debe ser único. Se conservan los ceros iniciales.</p>
+                <p id="product-barcode-error" class="field-error" hidden></p>
+                <div class="price-fields">
+                    <div><label for="product-sale-price">Precio de venta</label><input id="product-sale-price" name="sale_price" type="text" inputmode="decimal" pattern="[0-9]{1,10}([.,][0-9]{1,2})?" maxlength="13" placeholder="0,00" required aria-describedby="product-price-help product-sale-price-error"><p id="product-sale-price-error" class="field-error" hidden></p></div>
+                    <div><label for="product-cost-price">Precio de costo</label><input id="product-cost-price" name="cost_price" type="text" inputmode="decimal" pattern="[0-9]{1,10}([.,][0-9]{1,2})?" maxlength="13" placeholder="0,00" required aria-describedby="product-price-help product-cost-price-error"><p id="product-cost-price-error" class="field-error" hidden></p></div>
+                </div>
+                <p id="product-price-help" class="field-help">Usa hasta dos decimales, sin separador de miles. Ejemplo: 12500,00.</p>
+            </fieldset>
+            <div class="dialog-actions"><button id="product-cancel" class="button-secondary" type="button">Cancelar</button><button id="product-save" class="button" type="submit">Crear producto</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="product-delete-dialog" class="app-dialog delete-dialog" aria-labelledby="product-delete-title" aria-describedby="product-delete-description">
+        <p class="eyebrow">Eliminar producto</p>
+        <h2 id="product-delete-title">¿Eliminar este producto?</h2>
+        <p id="product-delete-description">Vas a eliminar <strong id="product-delete-name"></strong>. Esta acción no se puede deshacer.</p>
+        <div id="product-delete-error" class="alert" role="alert" hidden></div>
+        <form id="product-delete-form"><div class="dialog-actions"><button id="product-delete-cancel" class="button-secondary" type="button" autofocus>Conservar producto</button><button id="product-delete-confirm" class="button button-danger" type="submit">Eliminar producto</button></div></form>
+    </dialog>
+</section>

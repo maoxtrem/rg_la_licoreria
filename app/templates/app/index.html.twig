@@ -1,0 +1,67 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <noscript><p class="dashboard">Activa JavaScript para acceder al sistema.</p></noscript>
+    <p id="loading" class="dashboard" role="status">Cargando…</p>
+    <p id="connection-error" class="dashboard" role="alert" hidden>No pudimos conectar con el servidor. Recarga la página para intentarlo nuevamente.</p>
+
+    <section id="login-view" class="login-layout" hidden>
+        <div class="intro">
+            <p class="eyebrow">Bienvenido a La Licorería</p>
+            <h1>Todo comienza<br>con una buena gestión.</h1>
+            <p>Ingresa a tu cuenta para acceder al panel de gestión.</p>
+        </div>
+        <div class="card login-card">
+            <p class="eyebrow">Acceso al sistema</p>
+            <h2>Iniciar sesión</h2>
+            <p class="muted">Introduce tu usuario y contraseña.</p>
+            <div id="login-error" class="alert" role="alert" hidden></div>
+            <form id="login-form">
+                <label for="username">Usuario</label>
+                <input type="text" id="username" name="username" autocomplete="username" maxlength="180" required>
+                <label for="password">Contraseña</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+                <button id="login-button" class="button button-full" type="submit">Entrar al sistema <span aria-hidden="true">→</span></button>
+            </form>
+        </div>
+    </section>
+
+    <div id="workspace" class="workspace" hidden>
+        {% include 'components/sidebar.html.twig' %}
+        <div class="workspace-content">
+    <section id="home-view" class="dashboard" hidden>
+        <p class="eyebrow">Tu espacio de trabajo</p>
+        <h1>Hola, <span data-username></span>.</h1>
+        <p class="muted">Tu sesión está activa. Bienvenido al panel de La Licorería.</p>
+        <div class="card account-card">
+            <span id="role-label" class="badge"></span>
+            <h2>Tu cuenta</h2>
+            <p>Usuario: <strong data-username></strong></p>
+            <a id="admin-link" class="button" href="/admin" hidden>Ir a administración <span aria-hidden="true">→</span></a>
+        </div>
+    </section>
+
+    <section id="admin-view" class="dashboard" hidden>
+        <a class="back-link" href="/">← Volver al inicio</a>
+        <p class="eyebrow">Administración</p>
+        <h1>Panel de administración.</h1>
+        <div class="card account-card"><p id="admin-message" role="status"></p></div>
+    </section>
+    <section id="access-denied-view" class="dashboard" hidden>
+        {% include 'components/access-denied.html.twig' %}
+    </section>
+    {% include 'components/products.html.twig' %}
+    <section id="module-view" class="dashboard" hidden>
+        <p id="module-group" class="eyebrow"></p>
+        <h1 id="module-title"></h1>
+        <div class="card module-card">
+            <span class="badge">Próximamente</span>
+            <h2>Estamos preparando este espacio.</h2>
+            <p id="module-description" class="muted"></p>
+            <a class="back-link" href="/">← Volver al inicio</a>
+        </div>
+    </section>
+        </div>
+    </div>
+    <div id="session-error" class="dashboard" role="alert" hidden></div>
+{% endblock %}

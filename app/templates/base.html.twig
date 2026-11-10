@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{% block title %}La Licorería{% endblock %}</title>
+        <link rel="stylesheet" href="/styles/app.css">
+        {% block scripts %}<script type="module" src="/scripts/app.js"></script>{% endblock %}
+    </head>
+    <body>
+        <header class="site-header">
+            <a class="brand" href="/">LA LICORERÍA<span>Gestión y administración</span></a>
+            <button id="logout-button" class="button-link" type="button" hidden>Cerrar sesión</button>
+        </header>
+        <main>{% block body %}{% endblock %}</main>
+        <footer>La Licorería &middot; Panel de gestión</footer>
+    </body>
+</html>
