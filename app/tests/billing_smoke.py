@@ -1,5 +1,6 @@
 """Regresión de pendientes, cobro y cierre de facturas contra la API local."""
 import secrets
+import json
 import subprocess
 import unittest
 
@@ -104,6 +105,37 @@ $em->createQuery('DELETE FROM App\Entity\Invoice i WHERE i.createdBy = :id')->se
             self.assertEqual(self.billing('?number=' + number)[0], 422)
         self.assertEqual(self.billing(f'/{invoice["id"]}')[1]['data'], invoice)
         self.assertEqual(self.billing(f'/{other["id"]}')[1]['data'], other)
+
+    def test_billing_date_range_colombia_boundaries(self):
+        self.prepare_billing()
+        product = self.sell_product()
+        invoices = [self.checkout(product)[0] for _ in range(4)]
+        today_invoice, _ = self.checkout(product)
+        timestamps = ['2024-01-02 04:59:59', '2024-01-02 05:00:00', '2024-01-03 04:59:59', '2024-01-03 05:00:00']
+        code = r'''<?php
+require 'vendor/autoload.php';
+(new Symfony\Component\Dotenv\Dotenv())->bootEnv('.env');
+$kernel = new App\Kernel($_ENV['APP_ENV'], true); $kernel->boot();
+$connection = $kernel->getContainer()->get('doctrine')->getConnection();
+foreach (json_decode(getenv('SMOKE_INVOICE_DATES'), true) as $id => $date) {
+    $connection->update('invoice', ['created_at' => $date], ['id' => $id]);
+}
+'''
+        dates = json.dumps({invoice['id']: date for invoice, date in zip(invoices, timestamps)})
+        subprocess.run(['docker', 'compose', '--env-file', 'app/.env.local', 'exec', '-T', '-e', 'SMOKE_INVOICE_DATES=' + dates, 'php', 'php'], cwd=api_auth_smoke.ROOT, input=code, text=True, check=True, capture_output=True)
+        status, result = self.billing('?from=2024-01-02&to=2024-01-02&limit=1')
+        self.assertEqual(status, 200, result)
+        self.assertEqual(result['pagination']['total'], 2)
+        self.assertEqual([i['id'] for i in result['data']], [invoices[2]['id']])
+        result = self.billing('?from=2024-01-02&to=2024-01-02&limit=1&page=2')[1]
+        self.assertEqual([i['id'] for i in result['data']], [invoices[1]['id']])
+        self.assertEqual(self.billing('?from=2024-01-02&to=2024-01-02&number=' + invoices[0]['number'])[1]['data'], [])
+        self.assertEqual(self.billing('?from=2024-01-02&to=2024-01-02&status=paid')[1]['pagination']['total'], 0)
+        self.assertIn(today_invoice['id'], [i['id'] for i in self.billing()[1]['data']])
+        self.assertEqual(self.billing('?number=' + invoices[1]['number'])[1]['data'], [])
+        self.assertEqual(self.billing('?from=&to=&number=' + invoices[1]['number'])[1]['pagination']['total'], 1)
+        for query in ['from=2024-02-30', 'to=invalid', 'from=2024-1-2', 'from=2024-01-03&to=2024-01-02']:
+            self.assertEqual(self.billing('?' + query)[0], 422)
 
     def test_billing_permissions_and_invalid_edit(self):
         group = self.prepare_billing()

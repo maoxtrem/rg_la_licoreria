@@ -1,6 +1,8 @@
 """Ventas -> pendiente editable -> cobro -> factura de solo impresión."""
 import os
 import unittest
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from playwright.sync_api import expect
 import products_browser
@@ -36,6 +38,9 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
         invoice = result.value.json()['data']
         expect(self.page.locator('#sales-summary-quantity')).to_have_text('0')
         self.page.get_by_role('link', name='Facturación', exact=True).click()
+        today = datetime.fromisoformat(invoice['created_at']).astimezone(ZoneInfo('America/Bogota')).date().isoformat()
+        expect(self.page.locator('#billing-date-from')).to_have_value(today)
+        expect(self.page.locator('#billing-date-to')).to_have_value(today)
         row = self.page.locator(f'tr[data-invoice-id="{invoice["id"]}"]')
         expect(row).to_contain_text('Pendiente de pago')
         row.get_by_role('button', name='Ver contenido de ' + invoice['number'], exact=True).click()
@@ -83,6 +88,17 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
         self.page.locator('#billing-number-filter').fill('')
         self.page.locator('#billing-number-filter').press('Tab')
         expect(self.page.locator('#billing-number-filter')).to_have_value('')
+        expect(row).to_be_visible()
+        self.page.locator('#billing-date-from').fill('2000-01-01')
+        self.page.locator('#billing-date-from').press('Tab')
+        self.page.locator('#billing-date-to').fill('2000-01-02')
+        self.page.locator('#billing-date-to').press('Tab')
+        expect(self.page.locator('#billing-empty')).to_be_visible()
+        self.page.locator('#billing-date-to').fill(today)
+        self.page.locator('#billing-date-to').press('Tab')
+        expect(row).to_be_visible()
+        self.page.locator('#billing-date-from').fill(today)
+        self.page.locator('#billing-date-from').press('Tab')
         expect(row).to_be_visible()
 
     def test_direct_payment_from_sales(self):
