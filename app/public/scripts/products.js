@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { alertError, alertPermission, notifySuccess, confirmDelete, showLoading, closeAlert } from './alerts.js';
 
 const element = (id) => document.getElementById(id);
 const fields = {
@@ -18,23 +19,13 @@ export async function startProducts({ actions, onAccessLost }) {
     let loading = false;
     let busy = false;
     let editingId = null;
-    let deletingId = null;
     const formDialog = element('product-dialog');
-    const deleteDialog = element('product-delete-dialog');
-
-    function message(id, text, error = true) {
-        const node = element(id);
-        node.textContent = text;
-        node.hidden = false;
-        if (id === 'products-feedback') node.classList.toggle('notice-error', error);
-    }
 
     function loseAccess() {
         permissions = {};
         products = [];
         element('products-rows').replaceChildren();
         formDialog.close();
-        deleteDialog.close();
         onAccessLost();
     }
 
@@ -65,7 +56,8 @@ export async function startProducts({ actions, onAccessLost }) {
         permissions = data.actions;
         applyPermissions();
         if (!permissions[action]) {
-            message('products-feedback', 'Tu grupo ya no tiene permiso para esta acción.');
+            formDialog.close();
+            void alertPermission('Tu grupo ya no tiene permiso para esta acción.');
             return false;
         }
         return true;
@@ -146,7 +138,7 @@ export async function startProducts({ actions, onAccessLost }) {
             element('products-table-container').hidden = products.length === 0;
             element('products-empty').hidden = products.length !== 0;
         } catch {
-            message('products-feedback', 'No pudimos cargar los productos. Usa «Actualizar listado» para intentarlo nuevamente.');
+            void alertError('No pudimos cargar los productos. Usa «Actualizar listado» para intentarlo nuevamente.');
         } finally {
             loading = false;
             element('products-loading').hidden = true;
@@ -157,7 +149,6 @@ export async function startProducts({ actions, onAccessLost }) {
     }
 
     function clearFormErrors() {
-        element('product-form-error').hidden = true;
         for (const [input, error] of Object.values(fields)) {
             element(input).removeAttribute('aria-invalid');
             element(error).hidden = true;
@@ -167,11 +158,10 @@ export async function startProducts({ actions, onAccessLost }) {
     function setBusy(value) {
         busy = value;
         element('product-fields').disabled = value;
-        for (const id of ['product-save', 'product-cancel', 'product-close', 'product-delete-confirm', 'product-delete-cancel']) {
+        for (const id of ['product-save', 'product-cancel', 'product-close']) {
             element(id).disabled = value;
         }
         element('product-save').textContent = value ? 'Guardando…' : (editingId === null ? 'Crear producto' : 'Guardar cambios');
-        element('product-delete-confirm').textContent = value ? 'Eliminando…' : 'Eliminar producto';
     }
 
     async function openProduct(id = null, action = 'create') {
@@ -185,7 +175,7 @@ export async function startProducts({ actions, onAccessLost }) {
                 if (redirectIfExpired(result.response)) return;
                 if (result.response.status === 403) { loseAccess(); return; }
                 if (result.response.status === 404) {
-                    message('products-feedback', 'Este producto ya no existe. El listado se ha actualizado.');
+                    void alertError('Este producto ya no existe. El listado se ha actualizado.');
                     await loadProducts();
                     return;
                 }
@@ -193,12 +183,7 @@ export async function startProducts({ actions, onAccessLost }) {
                 product = result.data.data;
             }
             if (action === 'delete') {
-                deletingId = id;
-                element('product-delete-name').textContent = product.name;
-                element('product-delete-error').hidden = true;
-                setBusy(false);
-                deleteDialog.showModal();
-                element('product-delete-cancel').focus();
+                if (await confirmDelete(product.name)) await deleteProduct(id);
                 return;
             }
             editingId = id;
@@ -210,7 +195,7 @@ export async function startProducts({ actions, onAccessLost }) {
             formDialog.showModal();
             element('product-name').focus();
         } catch {
-            message('products-feedback', 'No pudimos abrir el producto. Inténtalo nuevamente.');
+            void alertError('No pudimos abrir el producto. Inténtalo nuevamente.');
         } finally {
             setBusy(false);
         }
@@ -227,32 +212,30 @@ export async function startProducts({ actions, onAccessLost }) {
         });
     }
 
-    async function handleFailure(result, errorId) {
+    async function handleFailure(result, showFieldErrors = false) {
         if (!result || redirectIfExpired(result.response)) return true;
         if (result.response.ok) return false;
         if (result.response.status === 403) {
             formDialog.close();
-            deleteDialog.close();
-            if (await refreshPermissions()) message('products-feedback', 'La acción no está autorizada. Revisa los permisos de tu grupo o inténtalo nuevamente.');
+            if (await refreshPermissions()) await alertPermission('La acción no está autorizada. Revisa los permisos de tu grupo.');
         } else if (result.response.status === 404) {
             formDialog.close();
-            deleteDialog.close();
-            message('products-feedback', 'El producto ya no existe.');
+            await alertError('El producto ya no existe.');
             await loadProducts();
         } else {
-            message(errorId, result.data?.error ?? 'No se pudo completar la solicitud.');
-            if (errorId === 'product-form-error') {
-                let first = null;
+            let first = null;
+            if (showFieldErrors) {
                 for (const [key, text] of Object.entries(result.data?.errors ?? {})) {
                     if (!fields[key]) continue;
                     const [input, error] = fields[key];
                     element(input).setAttribute('aria-invalid', 'true');
-                    message(error, text);
+                    element(error).textContent = text;
+                    element(error).hidden = false;
                     first ??= element(input);
                 }
-                // The fieldset is re-enabled in finally before moving focus.
-                if (first) setTimeout(() => first.focus(), 0);
             }
+            await alertError(result.data?.error ?? 'No se pudo completar la solicitud.');
+            if (first) setTimeout(() => first.focus(), 0);
         }
         return true;
     }
@@ -269,42 +252,40 @@ export async function startProducts({ actions, onAccessLost }) {
                 key, key.endsWith('_price') ? element(input).value.trim().replace(',', '.') : element(input).value.trim(),
             ]));
             const result = await write(editingId === null ? '/api/products' : `/api/products/${editingId}`, editingId === null ? 'POST' : 'PUT', data);
-            if (await handleFailure(result, 'product-form-error')) return;
+            if (await handleFailure(result, true)) return;
             formDialog.close();
-            message('products-feedback', editingId === null ? 'Producto creado correctamente.' : 'Cambios guardados correctamente.', false);
+            void notifySuccess(editingId === null ? 'Producto creado correctamente.' : 'Cambios guardados correctamente.');
             if (editingId === null) page = 1;
             await loadProducts();
         } catch {
-            message('product-form-error', 'No pudimos confirmar la operación. Inténtalo de nuevo o actualiza el listado para comprobar el resultado.');
+            void alertError('No pudimos confirmar la operación. Inténtalo de nuevo o actualiza el listado para comprobar el resultado.');
         } finally {
             setBusy(false);
         }
     });
 
-    element('product-delete-form').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (busy || deletingId === null) return;
+    async function deleteProduct(id) {
         setBusy(true);
-        element('product-delete-error').hidden = true;
         try {
-            if (!await refreshPermissions('delete')) { deleteDialog.close(); return; }
-            const result = await write(`/api/products/${deletingId}`, 'DELETE');
-            if (await handleFailure(result, 'product-delete-error')) return;
-            deleteDialog.close();
-            message('products-feedback', 'Producto eliminado correctamente.', false);
+            if (!await refreshPermissions('delete')) return;
+            void showLoading('Eliminando producto…');
+            const result = await write(`/api/products/${id}`, 'DELETE');
+            closeAlert();
+            if (await handleFailure(result)) return;
+            void notifySuccess('Producto eliminado correctamente.');
             await loadProducts();
         } catch {
-            message('product-delete-error', 'No pudimos confirmar la eliminación. Actualiza el listado para comprobar el resultado.');
+            closeAlert();
+            void alertError('No pudimos confirmar la eliminación. Actualiza el listado para comprobar el resultado.');
         } finally {
             setBusy(false);
         }
-    });
+    }
 
     element('product-create').addEventListener('click', () => openProduct());
     for (const id of ['product-close', 'product-cancel']) element(id).addEventListener('click', () => { if (!busy) formDialog.close(); });
-    element('product-delete-cancel').addEventListener('click', () => { if (!busy) deleteDialog.close(); });
-    for (const dialog of [formDialog, deleteDialog]) dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
-    element('products-refresh').addEventListener('click', () => { if (busy) return; element('products-feedback').hidden = true; loadProducts(); });
+    for (const dialog of [formDialog]) dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
+    element('products-refresh').addEventListener('click', () => { if (busy) return; loadProducts(); });
     element('products-previous').addEventListener('click', () => { if (!busy && !loading && page > 1) { page--; loadProducts(); } });
     element('products-next').addEventListener('click', () => { if (!busy && !loading && page * limit < total) { page++; loadProducts(); } });
     applyPermissions();

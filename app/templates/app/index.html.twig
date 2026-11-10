@@ -15,7 +15,6 @@
             <p class="eyebrow">Acceso al sistema</p>
             <h2>Iniciar sesión</h2>
             <p class="muted">Introduce tu usuario y contraseña.</p>
-            <div id="login-error" class="alert" role="alert" hidden></div>
             <form id="login-form">
                 <label for="username">Usuario</label>
                 <input type="text" id="username" name="username" autocomplete="username" maxlength="180" required>
@@ -51,6 +50,7 @@
         {% include 'components/access-denied.html.twig' %}
     </section>
     {% include 'components/products.html.twig' %}
+    {% include 'components/sales.html.twig' %}
     <section id="module-view" class="dashboard" hidden>
         <p id="module-group" class="eyebrow"></p>
         <h1 id="module-title"></h1>
@@ -63,5 +63,4 @@
     </section>
         </div>
     </div>
-    <div id="session-error" class="dashboard" role="alert" hidden></div>
 {% endblock %}

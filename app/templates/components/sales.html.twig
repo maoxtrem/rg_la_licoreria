@@ -1,0 +1,31 @@
+<section id="sales-view" class="dashboard sales-page" hidden>
+    <p class="eyebrow">Operativos / Punto de venta</p>
+    <div class="page-heading"><div><h1>Ventas</h1><p class="muted">Escanea, agrega y prepara tu venta.</p></div></div>
+    <div class="sales-layout">
+        <div class="sales-main">
+            <div class="card scan-card">
+                <form id="sales-scan-form">
+                    <label for="sales-barcode">Código de barras</label>
+                    <div class="scan-input-row">
+                        <input id="sales-barcode" name="barcode" type="text" maxlength="100" autocomplete="off" spellcheck="false" aria-describedby="sales-scan-help sales-scan-status" placeholder="Escanea o escribe el código" disabled>
+                        <button id="sales-scan-button" class="button" type="submit" disabled>Agregar <span aria-hidden="true">↵</span></button>
+                    </div>
+                    <p id="sales-scan-help" class="field-help">El lector agrega el producto al enviar Enter. Puedes escanear el mismo código para sumar unidades.</p>
+                    <p id="sales-readonly" class="field-help" hidden>Tu grupo puede consultar el carrito, pero no agregar productos.</p>
+                    <p id="sales-scan-status" class="scan-status" role="status" aria-live="polite">Preparando el carrito…</p>
+                </form>
+            </div>
+            <div class="catalog-panel sales-cart">
+                <div class="catalog-toolbar"><div class="catalog-label"><h2>Carrito de venta</h2><span id="sales-line-count" class="count-badge">0</span></div><button id="sales-refresh" type="button" class="button-secondary button-small">Actualizar</button></div>
+                <div id="sales-empty" class="catalog-state"><div class="empty-icon" aria-hidden="true">◇</div><h2>Todo listo para tu primera lectura.</h2><p class="muted">Los productos que escanees aparecerán aquí.</p></div>
+                <div id="sales-table-container" class="table-scroll" hidden><table class="products-table"><caption class="sr-only">Productos de la venta actual</caption><thead><tr><th scope="col">Producto</th><th scope="col" class="price-cell">Precio</th><th scope="col">Cantidad</th><th scope="col" class="price-cell">Subtotal</th><th id="sales-remove-heading" scope="col" class="row-actions" hidden>Retirar</th></tr></thead><tbody id="sales-rows"></tbody></table></div>
+            </div>
+        </div>
+        <aside class="card sale-summary" aria-labelledby="sale-summary-title">
+            <p class="eyebrow">Venta actual</p><h2 id="sale-summary-title">Resumen</h2>
+            <dl class="sale-summary-details"><div><dt>Productos diferentes</dt><dd id="sales-summary-lines">0</dd></div><div><dt>Unidades</dt><dd id="sales-summary-quantity">0</dd></div></dl>
+            <div class="sale-total"><span>Total a pagar</span><strong id="sales-total" aria-live="polite">0,00</strong></div>
+            <button id="sales-clear" class="button-secondary button-full" type="button" hidden>Vaciar carrito</button>
+        </aside>
+    </div>
+</section>

@@ -34,6 +34,9 @@ class ApiExceptionListener
             405 => 'Método no permitido.',
             default => 'No se pudo completar la solicitud.',
         };
+        if ($exception instanceof \App\Sales\CartException) {
+            $message = $exception->getMessage();
+        }
         $headers = $exception instanceof HttpExceptionInterface ? $exception->getHeaders() : [];
         $headers['Cache-Control'] = 'no-store';
         $event->setResponse(new JsonResponse(['error' => $message], $status, $headers));

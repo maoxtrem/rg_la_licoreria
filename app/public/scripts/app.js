@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { alertError } from './alerts.js';
 import { startProducts } from './products.js';
+import { startSales } from './sales.js';
 
 const element = (id) => document.getElementById(id);
 const modules = {
@@ -72,13 +73,15 @@ async function initialize() {
                 return;
             }
             if (!access.response.ok) throw new Error('No se pudo consultar el acceso.');
-            if (module.key === 'products') {
-                showView('products-view');
-                await startProducts({
+            if (module.key === 'products' || module.key === 'sales') {
+                const view = `${module.key}-view`;
+                showView(view);
+                const start = module.key === 'products' ? startProducts : startSales;
+                await start({
                     actions: access.data.actions,
                     onAccessLost: () => {
-                        element('products-view').hidden = true;
-                        const link = document.querySelector('[data-nav][href="/productos"]');
+                        element(view).hidden = true;
+                        const link = document.querySelector(`[data-nav][href="${location.pathname}"]`);
                         if (link) link.hidden = true;
                         element('operational-navigation').hidden = ![...element('operational-navigation').querySelectorAll('[data-nav]')].some((item) => !item.hidden);
                         showView('access-denied-view');
@@ -116,7 +119,6 @@ element('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = element('login-button');
     button.disabled = true;
-    element('login-error').hidden = true;
     try {
         const csrf = await api('/api/csrf');
         if (!csrf.response.ok) throw new Error('No se pudo preparar el acceso.');
@@ -146,7 +148,6 @@ element('login-form').addEventListener('submit', async (event) => {
 element('logout-button').addEventListener('click', async () => {
     const button = element('logout-button');
     button.disabled = true;
-    element('session-error').hidden = true;
     try {
         const csrf = await api('/api/csrf');
         if (!csrf.response.ok) throw new Error('No se pudo preparar el cierre de sesión.');

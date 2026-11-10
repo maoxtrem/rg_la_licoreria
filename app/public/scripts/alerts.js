@@ -2,6 +2,7 @@ import Swal from '../vendor/sweetalert2/sweetalert2.esm.all.min.js';
 
 const image = '/images/access-denied.svg';
 const theme = {
+    background: '#fffdf9', color: '#302b29',
     confirmButtonText: 'Entendido',
     cancelButtonText: 'Cancelar',
     buttonsStyling: false,
@@ -42,6 +43,24 @@ export async function confirmDelete(name) {
         showCancelButton: true, confirmButtonText: 'Eliminar producto', cancelButtonText: 'Conservar producto',
         focusCancel: true,
         customClass: { ...theme.customClass, confirmButton: 'button button-danger' },
+    }));
+    return result.isConfirmed;
+}
+
+
+export function showLoading(title) {
+    return Swal.fire(options({ title, allowOutsideClick: false, allowEscapeKey: false, didOpen: () => Swal.showLoading() }));
+}
+
+export function closeAlert() {
+    Swal.close();
+}
+
+
+export async function confirmCartClear() {
+    const result = await Swal.fire(options({
+        icon: 'question', title: '¿Vaciar el carrito?', text: 'Se retirarán todos los productos de la venta actual.',
+        showCancelButton: true, confirmButtonText: 'Vaciar carrito', cancelButtonText: 'Conservar carrito', focusCancel: true,
     }));
     return result.isConfirmed;
 }

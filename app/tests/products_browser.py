@@ -126,16 +126,16 @@ class ProductsBrowserTest(unittest.TestCase):
         row = self.page.locator('#products-rows tr').filter(has_text=name + ' actualizado')
         expect(row).to_contain_text('47.000,25')
         row.get_by_role('button', name=re.compile('^Eliminar ')).click()
-        expect(self.page.locator('#product-delete-cancel')).to_be_focused()
-        self.page.locator('#product-delete-cancel').click()
+        expect(self.page.locator('.swal2-cancel')).to_be_focused()
+        self.page.locator('.swal2-cancel').click()
         expect(row).to_be_visible()
         row.get_by_role('button', name=re.compile('^Eliminar ')).click()
         with self.page.expect_response(lambda response: response.request.method == 'DELETE') as deleted:
-            self.page.locator('#product-delete-confirm').click()
+            self.page.locator('.swal2-confirm').click()
         self.assertEqual(deleted.value.status, 204)
-        expect(self.page.locator('#product-delete-dialog')).not_to_be_visible()
+        expect(self.page.locator('.swal2-popup:not(.swal2-toast)')).not_to_be_visible()
         expect(row).to_have_count(0)
-        expect(self.page.locator('#products-feedback')).to_contain_text('eliminado correctamente')
+        expect(self.page.locator('.swal2-popup')).to_contain_text('eliminado correctamente')
 
     def test_duplicate_barcode_stays_in_form(self):
         product = self.create_api()
@@ -145,7 +145,11 @@ class ProductsBrowserTest(unittest.TestCase):
         self.assertEqual(self.save('POST').status, 409)
         expect(self.page.locator('#product-dialog')).to_be_visible()
         expect(self.page.locator('#product-barcode')).to_have_attribute('aria-invalid', 'true')
+        expect(self.page.locator('.swal2-popup')).to_be_visible()
+        expect(self.page.locator('.swal2-popup')).to_contain_text('código de barras')
+        self.page.locator('.swal2-confirm').click()
         expect(self.page.locator('#product-barcode-error')).to_contain_text('único')
+        expect(self.page.locator('#product-barcode')).to_be_focused()
 
     def test_permissions_readonly_and_revocation_while_editing(self):
         product = self.create_api()
@@ -164,7 +168,8 @@ class ProductsBrowserTest(unittest.TestCase):
         self.page.on('request', lambda request: writes.append(request.method) if '/api/products/' in request.url and request.method == 'PUT' else None)
         self.page.locator('#product-save').click()
         expect(self.page.locator('#product-dialog')).not_to_be_visible()
-        expect(self.page.locator('#products-feedback')).to_contain_text('ya no tiene permiso')
+        expect(self.page.locator('.swal2-popup')).to_contain_text('ya no tiene permiso')
+        expect(self.page.locator('.swal2-image')).to_have_attribute('src', '/images/access-denied.svg')
         expect(self.page.locator('#products-rows button')).to_have_count(0)
         self.assertEqual(writes, [])
         self.assertEqual(self.admin.get(f'/api/products/{product["id"]}').json()['data']['name'], product['name'])
@@ -187,7 +192,7 @@ class ProductsBrowserTest(unittest.TestCase):
         expect(self.page.get_by_role('button', name='Editar ' + name, exact=True)).to_have_count(0)
         self.page.get_by_role('button', name='Eliminar ' + name, exact=True).click()
         with self.page.expect_response(lambda response: response.request.method == 'DELETE') as result:
-            self.page.locator('#product-delete-confirm').click()
+            self.page.locator('.swal2-confirm').click()
         self.assertEqual(result.value.status, 204)
 
     def test_no_view_permission_blocks_direct_navigation(self):
@@ -195,6 +200,7 @@ class ProductsBrowserTest(unittest.TestCase):
         self.api_login(self.context.request, os.environ['SMOKE_USERNAME'], os.environ['SMOKE_PASSWORD'])
         self.page.goto(BASE + '/productos')
         expect(self.page.locator('#access-denied-view')).to_be_visible()
+        expect(self.page.locator('#access-denied-view img')).to_have_attribute('src', '/images/access-denied.svg')
         expect(self.page.locator('#products-view')).to_be_hidden()
         expect(self.page.locator('[data-nav][href="/productos"]')).to_be_hidden()
 
@@ -204,9 +210,34 @@ class ProductsBrowserTest(unittest.TestCase):
         self.grant([])
         self.page.locator('#products-refresh').click()
         expect(self.page.locator('#access-denied-view')).to_be_visible()
+        expect(self.page.locator('#access-denied-view img')).to_have_attribute('src', '/images/access-denied.svg')
         expect(self.page.locator('#products-view')).to_be_hidden()
         expect(self.page.locator('[data-nav][href="/productos"]')).to_be_hidden()
         expect(self.page.locator('#products-rows tr')).to_have_count(0)
+
+    def test_direct_forbidden_api_navigation_uses_custom_image(self):
+        self.grant([])
+        self.api_login(self.context.request, os.environ['SMOKE_USERNAME'], os.environ['SMOKE_PASSWORD'])
+        for path in ['/api/products', '/api/admin']:
+            response = self.page.goto(BASE + path)
+            self.assertEqual(response.status, 403)
+            expect(self.page.locator('.access-denied-image')).to_be_visible()
+            expect(self.page.locator('h1')).to_have_text('Este espacio necesita permiso.')
+            self.assertNotIn('Symfony Exception', self.page.content())
+            self.assertEqual(self.page.locator('script[src="/scripts/app.js"]').count(), 0)
+        response = self.context.request.get(BASE + '/api/products', headers={'Accept': 'application/json'})
+        self.assertEqual(response.status, 403)
+        self.assertIn('error', response.json())
+
+    def test_login_error_uses_sweetalert(self):
+        self.page.goto(BASE + '/login')
+        self.page.locator('#username').fill('admin')
+        self.page.locator('#password').fill('incorrect-password')
+        self.page.locator('#login-button').click()
+        expect(self.page.locator('.swal2-popup')).to_be_visible()
+        expect(self.page.locator('.swal2-popup')).to_contain_text('No se pudo iniciar sesión')
+        self.page.locator('.swal2-confirm').click()
+        expect(self.page.locator('#password')).to_be_focused()
 
     def test_pagination(self):
         products = [self.create_api() for _ in range(21)]
@@ -223,10 +254,11 @@ class ProductsBrowserTest(unittest.TestCase):
     def test_list_network_failure_can_be_retried(self):
         self.page.route('**/api/products?*', lambda route: route.fulfill(status=503, content_type='application/json', body='{"error":"Temporal"}'))
         self.login_ui()
-        expect(self.page.locator('#products-feedback')).to_contain_text('No pudimos cargar')
+        expect(self.page.locator('.swal2-popup')).to_contain_text('No pudimos cargar')
+        self.page.locator('.swal2-confirm').click()
         self.page.unroute('**/api/products?*')
         self.refresh()
-        expect(self.page.locator('#products-feedback')).to_be_hidden()
+        expect(self.page.locator('.swal2-popup')).to_be_hidden()
 
     def test_expired_session_returns_to_login(self):
         self.login_ui()

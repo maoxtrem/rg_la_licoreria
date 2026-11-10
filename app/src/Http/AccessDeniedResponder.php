@@ -18,7 +18,7 @@ class AccessDeniedResponder
         $accept = $request->headers->get('Accept', '');
         $headers = ['Cache-Control' => 'no-store', 'Vary' => 'Accept'];
         if (str_contains($accept, 'text/html') && !str_contains($accept, 'application/json')) {
-            return new Response($this->twig->render('app/access-denied.html.twig'), Response::HTTP_FORBIDDEN, $headers);
+            return new Response($this->twig->render('app/access-denied.html.twig'), Response::HTTP_FORBIDDEN, $headers + ['Content-Type' => 'text/html; charset=UTF-8']);
         }
 
         return new JsonResponse(['error' => 'No tienes permiso para realizar esta acción.'], Response::HTTP_FORBIDDEN, $headers);

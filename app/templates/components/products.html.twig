@@ -8,7 +8,6 @@
         <button id="product-create" class="button" type="button" hidden><span aria-hidden="true">＋</span> Nuevo producto</button>
     </div>
 
-    <div id="products-feedback" class="notice" role="status" aria-live="polite" hidden></div>
     <div class="catalog-panel">
         <div class="catalog-toolbar">
             <div class="catalog-label"><h2>Catálogo de productos</h2><span id="products-count" class="count-badge">0</span><span id="products-readonly" class="muted small-text" hidden>Solo lectura</span></div>
@@ -46,7 +45,6 @@
     <dialog id="product-dialog" class="app-dialog" aria-labelledby="product-dialog-title">
         <div class="dialog-heading"><div><p class="eyebrow">Catálogo de productos</p><h2 id="product-dialog-title">Nuevo producto</h2></div><button id="product-close" class="dialog-close" type="button" aria-label="Cerrar formulario">×</button></div>
         <p class="muted small-text">Completa los datos del producto. Todos los campos son obligatorios.</p>
-        <div id="product-form-error" class="alert" role="alert" hidden></div>
         <form id="product-form">
             <fieldset id="product-fields" class="form-fields">
                 <label for="product-name">Nombre del producto</label>
@@ -66,11 +64,4 @@
         </form>
     </dialog>
 
-    <dialog id="product-delete-dialog" class="app-dialog delete-dialog" aria-labelledby="product-delete-title" aria-describedby="product-delete-description">
-        <p class="eyebrow">Eliminar producto</p>
-        <h2 id="product-delete-title">¿Eliminar este producto?</h2>
-        <p id="product-delete-description">Vas a eliminar <strong id="product-delete-name"></strong>. Esta acción no se puede deshacer.</p>
-        <div id="product-delete-error" class="alert" role="alert" hidden></div>
-        <form id="product-delete-form"><div class="dialog-actions"><button id="product-delete-cancel" class="button-secondary" type="button" autofocus>Conservar producto</button><button id="product-delete-confirm" class="button button-danger" type="submit">Eliminar producto</button></div></form>
-    </dialog>
 </section>

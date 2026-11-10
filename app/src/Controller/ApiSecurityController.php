@@ -20,6 +20,7 @@ class ApiSecurityController extends AbstractController
             'login' => $csrf->getToken('authenticate')->getValue(),
             'logout' => $csrf->getToken('logout')->getValue(),
             'products' => $csrf->getToken('products')->getValue(),
+            'sales' => $csrf->getToken('sales')->getValue(),
             'groups' => $csrf->getToken('groups')->getValue(),
             'permissions' => $csrf->getToken('permissions')->getValue(),
             'users' => $csrf->getToken('users')->getValue(),

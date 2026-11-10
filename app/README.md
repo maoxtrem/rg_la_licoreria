@@ -49,7 +49,8 @@ El catálogo contiene 24 permisos: seis módulos por cuatro acciones.
 | Permisos | `permissions` | `view`, `create`, `update`, `delete` |
 
 Las claves completas tienen el formato `products.view`, `products.create`, etc.
-El catálogo es fijo y se instala mediante migraciones; no se pueden inventar
+El catálogo se declara en código y se registra mediante migraciones o el comando
+`app:permissions:sync`; no se pueden inventar
 permisos ni enviar `ROLE_ADMIN` como permiso. Algunos permisos quedan reservados
 para acciones de módulos que aún no están implementados.
 
@@ -75,7 +76,9 @@ negocio se resuelven en esta capa propia, sin voters ni roles por módulo.
 
 Para agregar un módulo:
 
-1. Registrarlo en `Module` y crear una migración con sus cuatro permisos.
+1. Registrarlo en `Module` y ejecutar `php bin/console app:permissions:sync`
+   durante el despliegue. El comando crea las cuatro acciones faltantes sin
+   duplicar registros ni conceder permisos a grupos.
 2. Declarar `_permission_module` en las rutas de su API.
 3. Añadir su entrada de navegación usando la misma clave.
 4. Probar sus accesos permitidos y denegados.
@@ -100,7 +103,7 @@ La sesión usa una cookie HttpOnly de Symfony y las solicitudes incluyen
 
 | Método | Ruta | Resultado |
 | --- | --- | --- |
-| GET | `/api/csrf` | Tokens `login`, `logout`, `products`, `groups`, `permissions`, `users` |
+| GET | `/api/csrf` | Tokens `login`, `logout`, `products`, `sales`, `groups`, `permissions`, `users` |
 | POST | `/api/login` | Autentica con JSON y devuelve `user` |
 | GET | `/api/me` | Usuario, grupo y matriz efectiva de permisos |
 | POST | `/api/logout` | Invalida la sesión |
@@ -251,3 +254,87 @@ paginación, permisos por acción, revocación con un formulario abierto,
 caducidad de sesión, fallos de conexión y vista móvil. El ejecutor crea un
 usuario/grupo temporales y los elimina al terminar; no cambia dependencias de
 la aplicación. La primera ejecución descarga el entorno de navegador.
+
+
+## Ventas y lector de código de barras
+
+Abrir `/ventas`. El campo de lectura recibe el foco cuando termina de cargar el
+carrito. Un lector que envía Enter funciona como teclado; también se puede
+escribir un código manualmente y presionar Enter o **Agregar**.
+
+- Cada lectura agrega una unidad. Repetir el código incrementa la misma línea.
+- Un producto distinto agrega otra línea, conservando el orden de lectura.
+- El campo se limpia inmediatamente y la cola de solicitudes conserva todas
+  las lecturas rápidas, sin enviar escrituras simultáneas desde esta pantalla.
+- El precio se toma del catálogo en el servidor; el cliente no envía precios.
+- Cantidades y totales se calculan en centavos enteros y se devuelven como
+  cadenas decimales exactas. Los precios de costo no se exponen en esta API.
+- El carrito persiste al cambiar de ruta o recargar dentro de la sesión, y se
+  aísla por usuario. Cerrar sesión lo elimina. No es todavía una venta cobrada.
+
+| Método | Ruta | Permiso |
+| --- | --- | --- |
+| GET | `/api/sales/cart` | `sales.view` |
+| POST | `/api/sales/cart/items` | `sales.create` + `sales.view` |
+| PATCH | `/api/sales/cart/items/{product_id}` | `sales.update` + `sales.view` |
+| DELETE | `/api/sales/cart/items/{product_id}` | `sales.delete` + `sales.view` |
+| DELETE | `/api/sales/cart` | `sales.delete` + `sales.view` |
+
+Todas las escrituras requieren `X-CSRF-Token` con el valor `sales` de
+`/api/csrf`. El administrador supera los permisos de grupo, manteniendo CSRF.
+
+Lectura:
+
+```json
+{"barcode":"0007701234567"}
+```
+
+Cambio manual de cantidad:
+
+```json
+{"quantity":3}
+```
+
+Las respuestas incluyen `data.items`, `line_count`, `quantity` y `total`.
+Cada línea contiene `product_id`, `name`, `barcode`, `unit_price`, `quantity`
+y `subtotal`. Una lectura nueva o repetida requiere `create`; cambiar la cantidad
+con controles manuales requiere `update`; retirar o vaciar requiere `delete`.
+La cantidad por línea está limitada a 9999, y el carrito a 100 productos distintos.
+No se puede reducir una cantidad a cero: para retirar la línea se requiere delete.
+
+Si se elimina un producto del catálogo, la siguiente lectura del carrito lo
+retira e informa `removed_unavailable`. Los precios se vuelven a consultar al
+leer o modificar el carrito. El registro definitivo del pago queda pendiente.
+
+Los permisos de Ventas ya están registrados. El sincronizador también servirá
+para los módulos que se agreguen después:
+
+```bash
+docker compose --env-file app/.env.local exec php php bin/console app:permissions:sync
+```
+
+No modifica asignaciones existentes: los permisos nuevos permanecen sin conceder
+hasta que el administrador los asigne a un grupo.
+
+## Alertas y accesos restringidos
+
+Las confirmaciones, errores y avisos usan SweetAlert2 11.26.25, servido localmente
+desde `public/vendor/sweetalert2` con su licencia MIT. El cliente compartido es
+`public/scripts/alerts.js`. Los avisos de éxito usan toast y los errores de
+validación conservan las indicaciones junto al campo.
+
+El acceso restringido usa la ilustración local `public/images/access-denied.svg`.
+Las llamadas de JavaScript conservan el error JSON 403; una navegación HTML a
+una URL protegida devuelve una página propia con la imagen y estado HTTP 403.
+No se muestra la página de excepción de Symfony para esos permisos.
+
+Pruebas de Ventas, Productos, alertas y permisos:
+
+```bash
+python3 app/tests/sales_smoke.py
+BROWSER_TEST_FILE=sales_browser.py python3 app/tests/run_products_browser.py
+```
+
+La suite HTTP contiene 34 casos y la de Chromium 19, incluidas las regresiones
+de autenticación, permisos y productos. Las pruebas crean y eliminan sus datos
+temporales. El lector se verifica mediante eventos de teclado y lecturas rápidas.
