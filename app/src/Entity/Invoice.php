@@ -6,13 +6,14 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'invoice')]
+#[ORM\UniqueConstraint(name: 'UNIQ_invoice_checkout', columns: ['checkout_key'])]
 class Invoice
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
-    #[ORM\Column(length: 36, unique: true)]
+    #[ORM\Column(length: 36)]
     private string $checkoutKey;
     #[ORM\Column]
     private int $createdBy;

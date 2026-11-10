@@ -1,176 +1,164 @@
 import { api } from './api.js';
 import { alertError, alertPermission, confirmInvoicePayment, notifySuccess } from './alerts.js';
 
+const element = (id) => document.getElementById(id);
 const money = (value) => {
     const [whole, fraction = '00'] = value.split('.');
-    return '$' + whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + fraction;
+    return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${fraction.padEnd(2, '0')}`;
 };
 const cents = (value) => BigInt(value.replace('.', ''));
 const decimal = (value) => `${value / 100n}.${String(value % 100n).padStart(2, '0')}`;
-const jobId = () => [...crypto.getRandomValues(new Uint8Array(16))].map((value) => value.toString(16).padStart(2, '0')).join('');
 
 export async function startBilling({ actions, onAccessLost }) {
-    const element = (id) => document.getElementById(`billing-${id}`);
-    let permissions = actions;
-    let page = 1;
-    let current = null;
-    let lines = [];
-    let dirty = false;
-    let busy = false;
-    let printId = null;
-    const dialog = element('dialog');
-
-    async function request(path, method = 'GET', data) {
-        const headers = {};
-        if (method !== 'GET') {
-            const csrf = await api('/api/csrf');
-            if (!csrf.response.ok) throw new Error('No se pudo preparar la solicitud.');
-            headers['Content-Type'] = 'application/json';
-            headers['X-CSRF-Token'] = csrf.data.billing;
-        }
-        const result = await api(path, { method, headers, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
-        if (result.response.status === 401) { location.replace('/login'); throw new Error('La sesión terminó.'); }
-        if (result.response.status === 403) {
-            const access = await api('/api/modules/billing/access');
-            if (access.response.status === 403) {
-                dialog.close(); current = null; lines = []; element('rows').replaceChildren(); element('items').replaceChildren(); onAccessLost();
-            } else if (access.response.ok) {
-                permissions = access.data.actions;
-                if (current) renderDetail();
-                await alertPermission();
-            }
-            throw new Error('No tienes permiso para esta acción.');
-        }
-        if (!result.response.ok) throw new Error(result.data?.error ?? 'No se pudo completar la solicitud.');
+    let permissions = actions, busy = false, lost = false, page = 1, pages = 1;
+    let editing = null, items = [];
+    const dialog = element('billing-dialog');
+    // Keep a job reference after an uncertain response so retrying cannot duplicate it.
+    const printJobs = new Map();
+    function state() {
+        for (const control of element('billing-view').querySelectorAll('button, input, select')) control.disabled = busy || lost;
+        element('billing-previous').disabled = busy || page <= 1;
+        element('billing-next').disabled = busy || page >= pages;
+        element('billing-save').disabled = busy || !items.length || !permissions.update;
+    }
+    function close() { dialog.close(); editing = null; items = []; }
+    async function request(path, options) {
+        const result = await api(path, options);
+        if (result.response.status === 401) { location.replace('/login'); throw new Error('La sesión expiró.'); }
+        if (!result.response.ok) throw new Error(result.data?.error ?? 'No se pudo completar la operación.');
         return result.data;
     }
-
-    async function run(work) {
-        if (busy) return;
-        busy = true;
-        controls();
-        try { await work(); } catch (error) { await alertError(error.message); }
-        finally { busy = false; controls(); }
+    async function authorize(action = 'view') {
+        const result = await api('/api/modules/billing/access');
+        if (result.response.status === 401) { location.replace('/login'); return false; }
+        if (result.response.status === 403) {
+            lost = true; close(); element('billing-rows').replaceChildren(); onAccessLost(); return false;
+        }
+        if (!result.response.ok) throw new Error('No se pudieron consultar los permisos.');
+        permissions = result.data.actions;
+        if (!permissions[action]) {
+            close(); await load(); await alertPermission('Tu grupo ya no tiene permiso para realizar esta acción en Facturación.'); return false;
+        }
+        return true;
     }
-
-    function controls() {
-        element('refresh').disabled = busy;
-        element('filter').disabled = busy;
-        for (const id of ['save', 'pay', 'print']) element(id).disabled = busy || (id === 'pay' && dirty);
-        for (const node of element('items').querySelectorAll('button,input')) node.disabled = busy;
-        for (const node of element('add-form').querySelectorAll('button,input')) node.disabled = busy;
-        for (const node of element('rows').querySelectorAll('button')) node.disabled = busy;
-        element('close').disabled = busy;
+    async function run(job) {
+        if (busy || lost) return;
+        busy = true; state();
+        try { await job(); }
+        catch (error) { await alertError(error.message); }
+        finally { busy = false; state(); }
     }
-
+    async function mutate(path, method, data) {
+        const csrf = await request('/api/csrf');
+        return request(path, { method, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.billing }, body: JSON.stringify(data) });
+    }
+    function cell(text, className = '') {
+        const node = document.createElement('td'); node.textContent = text; node.className = className; return node;
+    }
+    function button(text, label, callback) {
+        const node = document.createElement('button'); node.type = 'button'; node.className = 'table-action'; node.textContent = text;
+        node.setAttribute('aria-label', label); node.addEventListener('click', callback); return node;
+    }
     async function load() {
-        const filter = element('filter').value;
-        const result = await request(`/api/billing?page=${page}&limit=20${filter ? '&status=' + filter : ''}`);
-        const rows = result.data.map((invoice) => {
+        if (!await authorize()) return;
+        element('billing-loading').hidden = false;
+        try {
+            const query = new URLSearchParams({ page, limit: 20 });
+            if (element('billing-status').value) query.set('status', element('billing-status').value);
+            const result = await request(`/api/billing?${query}`);
+            pages = Math.max(1, Math.ceil(result.pagination.total / 20));
+            if (page > pages) { page = pages; return await load(); }
+            const rows = result.data.map((invoice) => {
+                const row = document.createElement('tr'); row.dataset.invoiceId = invoice.id;
+                row.append(cell(invoice.number), cell(new Date(invoice.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' })), cell(invoice.status === 'paid' ? 'Facturada' : 'Pendiente de pago'), cell(money(invoice.total), 'price-cell'));
+                const controls = cell('', 'row-actions');
+                if (invoice.status === 'paid') {
+                    controls.append(button('Imprimir', `Imprimir ${invoice.number}`, () => run(() => print(invoice.id))));
+                } else if (permissions.update) {
+                    controls.append(button('Editar', `Editar ${invoice.number}`, () => run(() => edit(invoice.id))), button('Pagar', `Pagar ${invoice.number}`, () => run(() => pay(invoice.id))));
+                } else controls.textContent = 'Solo lectura';
+                row.append(controls); return row;
+            });
+            element('billing-rows').replaceChildren(...rows);
+            element('billing-empty').hidden = rows.length !== 0;
+            element('billing-table-container').hidden = rows.length === 0;
+            element('billing-pagination').hidden = result.pagination.total === 0;
+            element('billing-count').textContent = `${result.pagination.total} registros`;
+            element('billing-page-number').textContent = `${page} de ${pages}`;
+        } finally { element('billing-loading').hidden = true; state(); }
+    }
+    async function edit(id) {
+        if (!await authorize('update')) return;
+        const { data } = await request(`/api/billing/${id}`);
+        if (data.status !== 'pending') { await load(); throw new Error('La factura ya está facturada. Solo se puede imprimir.'); }
+        editing = data; items = data.items.map((item) => ({ ...item }));
+        element('billing-dialog-title').textContent = `Editar ${data.number}`;
+        element('billing-barcode').value = '';
+        renderItems(); dialog.showModal();
+    }
+    function renderItems() {
+        let total = 0n;
+        const rows = items.map((item) => {
+            const subtotal = cents(item.unit_price) * BigInt(item.quantity); total += subtotal;
             const row = document.createElement('tr');
-            row.dataset.invoiceId = invoice.id;
-            for (const value of [invoice.number, new Date(invoice.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' }), invoice.status === 'paid' ? 'Facturada' : 'Pendiente de pago', money(invoice.total)]) {
-                const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
-            }
-            const cell = document.createElement('td');
-            const button = document.createElement('button'); button.type = 'button'; button.className = 'table-action';
-            button.textContent = invoice.status === 'paid' ? 'Ver / Imprimir' : 'Ver pendiente';
-            button.addEventListener('click', () => run(() => open(invoice.id)));
-            cell.append(button); row.append(cell);
-            return row;
+            const quantity = document.createElement('input'); quantity.type = 'number'; quantity.min = '1'; quantity.max = '9999'; quantity.step = '1'; quantity.required = true; quantity.value = item.quantity;
+            quantity.setAttribute('aria-label', `Cantidad de ${item.name}`);
+            quantity.addEventListener('change', () => {
+                const value = Number(quantity.value);
+                if (!Number.isInteger(value) || value < 1 || value > 9999) { quantity.reportValidity(); return; }
+                item.quantity = value; renderItems();
+            });
+            const count = cell(''); count.append(quantity);
+            const remove = cell(''); remove.append(button('Retirar', `Retirar ${item.name}`, () => { items = items.filter((line) => line !== item); renderItems(); }));
+            row.append(cell(`${item.name} · ${money(item.unit_price)}`), count, cell(money(decimal(subtotal)), 'price-cell'), remove); return row;
         });
-        element('rows').replaceChildren(...rows);
-        element('status').textContent = rows.length ? `${result.pagination.total} registros.` : 'No hay registros para este estado.';
-        element('page').textContent = `Página ${page}`;
-        element('previous').disabled = page <= 1;
-        element('next').disabled = page * 20 >= result.pagination.total;
+        element('billing-edit-rows').replaceChildren(...rows);
+        element('billing-edit-total').textContent = money(decimal(total)); state();
     }
-
-    async function open(id) {
-        current = (await request(`/api/billing/${id}`)).data;
-        lines = current.items.map((line) => ({ ...line }));
-        dirty = false; printId = null;
-        renderDetail();
-        if (!dialog.open) dialog.showModal();
+    async function pay(id) {
+        if (!await authorize('update')) return;
+        const { data } = await request(`/api/billing/${id}`);
+        if (data.status !== 'pending') { await load(); throw new Error('La factura ya está facturada. Solo se puede imprimir.'); }
+        if (!await confirmInvoicePayment()) return;
+        try {
+            await mutate(`/api/billing/${id}/pay`, 'POST', { revision: data.revision });
+        } catch (error) { await load(); throw error; }
+        await load(); await notifySuccess(`${data.number}: facturada. Ya puedes imprimirla.`);
     }
-
-    function renderDetail() {
-        const editable = current.status === 'pending' && permissions.update;
-        element('title').textContent = current.number;
-        element('detail-status').textContent = current.status === 'paid' ? 'Facturada · Pago registrado · Solo impresión' : 'Pendiente de pago';
-        element('company').textContent = current.company ? `${current.company.name} · NIT ${current.company.nit} · ${current.company.address} · ${current.company.phone}` : '';
-        const items = lines.map((line) => {
-            const row = document.createElement('div'); row.className = 'catalog-toolbar';
-            const name = document.createElement('span'); name.textContent = `${line.name} · ${money(line.unit_price)}`;
-            row.append(name);
-            if (editable) {
-                const quantity = document.createElement('input'); quantity.type = 'number'; quantity.min = '1'; quantity.max = '9999'; quantity.step = '1'; quantity.value = line.quantity;
-                quantity.setAttribute('aria-label', `Cantidad de ${line.name}`);
-                quantity.addEventListener('change', () => {
-                    const value = Number(quantity.value);
-                    if (!Number.isInteger(value) || value < 1 || value > 9999) { quantity.value = line.quantity; void alertError('Usa una cantidad entre 1 y 9999.'); return; }
-                    line.quantity = value; dirty = true; renderDetail();
-                });
-                const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'table-action table-action-danger'; remove.textContent = 'Retirar';
-                remove.setAttribute('aria-label', `Retirar ${line.name}`);
-                remove.addEventListener('click', () => { lines = lines.filter((item) => item.product_id !== line.product_id); dirty = true; renderDetail(); });
-                row.append(quantity, remove);
-            } else {
-                const quantity = document.createElement('span'); quantity.textContent = `${line.quantity} unidades`; row.append(quantity);
-            }
-            const subtotal = document.createElement('strong'); subtotal.textContent = money(decimal(cents(line.unit_price) * BigInt(line.quantity))); row.append(subtotal);
-            return row;
-        });
-        element('items').replaceChildren(...items);
-        const total = lines.reduce((value, line) => value + cents(line.unit_price) * BigInt(line.quantity), 0n);
-        element('total').textContent = `Total: ${money(decimal(total))}`;
-        element('save').hidden = !editable;
-        element('pay').hidden = !editable;
-        element('print').hidden = current.status !== 'paid';
-        element('add-form').hidden = !editable;
-        element('notice').textContent = dirty ? 'Guarda los cambios antes de pagar.' : current.status === 'paid' ? 'La impresión se envía a la cola y la procesa el worker.' : 'Puedes editar este registro hasta confirmar el pago.';
-        controls();
+    async function print(id) {
+        if (!await authorize()) return;
+        if (!printJobs.has(id)) printJobs.set(id, Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join(''));
+        await mutate(`/api/billing/${id}/print`, 'POST', { print_job_id: printJobs.get(id) });
+        printJobs.delete(id);
+        await notifySuccess('Solicitud enviada a la cola de impresión.');
     }
-
-    element('save').addEventListener('click', () => run(async () => {
-        const result = await request(`/api/billing/${current.id}`, 'PATCH', { revision: current.revision, items: lines.map(({ product_id, quantity }) => ({ product_id, quantity })) });
-        current = result.data; lines = current.items.map((line) => ({ ...line })); dirty = false;
-        renderDetail(); await load(); await notifySuccess('Pendiente actualizado');
-    }));
-    element('pay').addEventListener('click', () => run(async () => {
-        if (dirty || !await confirmInvoicePayment()) return;
-        current = (await request(`/api/billing/${current.id}/pay`, 'POST', { revision: current.revision })).data;
-        lines = current.items.map((line) => ({ ...line })); dirty = false;
-        renderDetail(); await load(); await notifySuccess('Pago registrado. Factura cerrada.');
-    }));
-    element('print').addEventListener('click', () => run(async () => {
-        printId ??= jobId();
-        await request(`/api/billing/${current.id}/print`, 'POST', { print_job_id: printId });
-        printId = null;
-        element('notice').textContent = 'Impresión enviada a la cola. El worker la procesará; esto todavía no confirma la salida del papel.';
-        await notifySuccess('Impresión enviada al worker');
-    }));
-    element('add-form').addEventListener('submit', (event) => {
+    element('billing-scan-form').addEventListener('submit', (event) => {
         event.preventDefault();
         void run(async () => {
-            const code = element('barcode').value.trim();
-            const product = (await request('/api/billing/product?barcode=' + encodeURIComponent(code))).data;
-            const existing = lines.find((line) => line.product_id === product.product_id);
-            if (existing) {
-                if (existing.quantity >= 9999) throw new Error('La cantidad máxima es 9999.');
-                existing.quantity++;
-            } else {
-                if (lines.length >= 100) throw new Error('El máximo es 100 productos.');
-                lines.push(product);
-            }
-            dirty = true; element('barcode').value = ''; renderDetail();
+            if (!await authorize('update') || !editing) return;
+            const barcode = element('billing-barcode').value.trim();
+            const { data } = await request(`/api/billing/product?${new URLSearchParams({ barcode })}`);
+            const existing = items.find((item) => item.product_id === data.product_id);
+            if (existing?.quantity >= 9999 || (!existing && items.length >= 100)) throw new Error('El registro admite hasta 100 productos y 9999 unidades por producto.');
+            if (existing) existing.quantity++; else items.push(data);
+            element('billing-barcode').value = ''; renderItems();
+        }).then(() => { if (dialog.open) element('billing-barcode').focus(); });
+    });
+    element('billing-edit-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        void run(async () => {
+            if (!await authorize('update') || !editing || !items.length) return;
+            try {
+                await mutate(`/api/billing/${editing.id}`, 'PATCH', { revision: editing.revision, items: items.map(({ product_id, quantity }) => ({ product_id, quantity })) });
+            } catch (error) { close(); await load(); throw error; }
+            close(); await load(); await notifySuccess('Registro pendiente actualizado.');
         });
     });
-    element('close').addEventListener('click', () => dialog.close());
-    dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
-    element('refresh').addEventListener('click', () => run(load));
-    element('filter').addEventListener('change', () => { page = 1; void run(load); });
-    element('previous').addEventListener('click', () => { if (!busy && page > 1) { page--; void run(load); } });
-    element('next').addEventListener('click', () => { if (!busy) { page++; void run(load); } });
+    for (const id of ['billing-close', 'billing-cancel']) element(id).addEventListener('click', close);
+    dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); else close(); });
+    element('billing-refresh').addEventListener('click', () => run(load));
+    element('billing-status').addEventListener('change', () => { page = 1; void run(load); });
+    element('billing-previous').addEventListener('click', () => { page--; void run(load); });
+    element('billing-next').addEventListener('click', () => { page++; void run(load); });
     await run(load);
 }

@@ -288,8 +288,8 @@ Ejemplo de alta:
 ```
 
 La migración `Version20261110070000` crea la ficha única y su catálogo de permisos.
-Los datos quedan listos para que Facturación los use más adelante; todavía no
-se incluyen automáticamente en tickets ni trabajos del microservicio.
+Al facturar se conserva una copia de los datos de Empresa en la factura,
+para que posteriores cambios de la ficha no alteren los comprobantes cerrados.
 
 Pruebas: `python3 app/tests/company_smoke.py`. La prueba de escritura utiliza
 una ficha temporal y la elimina al terminar; si ya existe una empresa real,
@@ -303,10 +303,40 @@ BROWSER_TEST_FILE=company_browser.py python3 app/tests/run_products_browser.py
 
 ## Facturación
 
-`/facturacion` aparece en Operativos cuando el usuario tiene `billing.view`.
-Por ahora solo muestra la página «Próximamente»; no crea ni imprime facturas.
-El administrador tiene acceso automáticamente. Para los demás usuarios, asignar
-`billing.view` a su grupo. Las otras acciones del catálogo quedan reservadas.
+`/facturacion` aparece en Operativos con `billing.view`. Lista las ventas guardadas,
+con filtro por estado y paginación. El administrador tiene acceso automáticamente.
+
+En Ventas, **Pendiente de pago** guarda el carrito sin cobrarlo y permite preparar
+otra venta. Se pueden conservar varios pendientes. **Pagar** confirma el pago y
+crea directamente una factura cerrada. Ambas acciones vacían el carrito después
+de guardar y requieren `sales.create` y `sales.view`.
+
+En Facturación, los pendientes muestran **Editar** y **Pagar** con `billing.update`.
+La edición permite escanear productos, retirar líneas y cambiar cantidades;
+se deben guardar los cambios antes de pagar desde el listado. Se conservan los
+precios acordados para las líneas existentes y se usa el precio actual para
+productos nuevos. Los registros facturados muestran solamente **Imprimir**,
+que envía una solicitud a Messenger con `billing.view`. La confirmación de la
+cola no confirma la salida física del ticket.
+
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| GET | `/api/billing?status=pending&page=1&limit=20` | Listar; `status` es opcional (`pending` o `paid`) |
+| GET | `/api/billing/{id}` | Consultar registro |
+| GET | `/api/billing/product?barcode=...` | Buscar producto para editar; requiere `billing.update` |
+| PATCH | `/api/billing/{id}` | Guardar `revision` e `items` con `product_id` y `quantity` |
+| POST | `/api/billing/{id}/pay` | Confirmar pago con `revision` |
+| POST | `/api/billing/{id}/print` | Encolar impresión con `print_job_id` de 32 caracteres hexadecimales |
+
+Las escrituras usan el token CSRF `billing` de `/api/csrf`. Edición y pago
+comprueban la revisión bajo bloqueo de base de datos para evitar sobrescribir
+cambios de otra ventana. Una factura pagada rechaza edición y nuevo cobro con
+409; un pendiente rechaza impresión. Antes de cobrar debe existir la ficha Empresa.
+
+Pruebas: `python3 app/tests/billing_smoke.py` y
+`python3 app/tests/run_billing_browser.py`. La prueba de navegador simula la
+respuesta de la cola de impresión para no generar tickets físicos y elimina
+los registros de su usuario temporal al terminar.
 
 ## Ventas y lector de código de barras
 
@@ -331,6 +361,7 @@ escribir un código manualmente y presionar Enter o **Agregar**.
 | PATCH | `/api/sales/cart/items/{product_id}` | `sales.update` + `sales.view` |
 | DELETE | `/api/sales/cart/items/{product_id}` | `sales.delete` + `sales.view` |
 | DELETE | `/api/sales/cart` | `sales.delete` + `sales.view` |
+| POST | `/api/sales/cart/checkout` | `sales.create` + `sales.view` |
 
 Todas las escrituras requieren `X-CSRF-Token` con el valor `sales` de
 `/api/csrf`. El administrador supera los permisos de grupo, manteniendo CSRF.
@@ -356,7 +387,9 @@ No se puede reducir una cantidad a cero: para retirar la línea se requiere dele
 
 Si se elimina un producto del catálogo, la siguiente lectura del carrito lo
 retira e informa `removed_unavailable`. Los precios se vuelven a consultar al
-leer o modificar el carrito. El registro definitivo del pago queda pendiente.
+leer o modificar el carrito. Para guardar la venta, el checkout recibe `status`
+(`pending` o `paid`) y el `checkout_key` de la última lectura. Repetir la misma
+referencia devuelve el registro existente sin crear otra factura.
 
 Los permisos de Ventas ya están registrados. El sincronizador también servirá
 para los módulos que se agreguen después:

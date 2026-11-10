@@ -34,7 +34,10 @@ if (getenv('SMOKE_ACTION') === 'create') {
     $em->persist($user);
 } else {
     $user = $em->getRepository(App\Entity\User::class)->findOneBy(['username' => $username]);
-    if ($user) $em->remove($user);
+    if ($user) {
+        $em->createQuery('DELETE FROM App\Entity\Invoice i WHERE i.createdBy = :id')->setParameter('id', $user->getId())->execute();
+        $em->remove($user);
+    }
     $em->flush();
     $group = $em->getRepository(App\Entity\UserGroup::class)->findOneBy(['name' => $username]);
     if ($group) $em->remove($group);

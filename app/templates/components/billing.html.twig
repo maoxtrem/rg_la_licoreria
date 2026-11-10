@@ -1,27 +1,26 @@
 <section id="billing-view" class="dashboard" hidden>
-    <p class="eyebrow">Operativos</p>
-    <div class="page-heading"><div><h1>Facturación</h1><p class="muted">Cobra los pendientes y consulta tus facturas.</p></div></div>
+    <p class="eyebrow">Operativos / Ventas registradas</p>
+    <div class="page-heading"><div><h1>Facturación</h1><p class="muted">Retoma las ventas pendientes o imprime tus facturas.</p></div></div>
     <div class="catalog-panel">
         <div class="catalog-toolbar">
-            <label for="billing-filter">Estado <select id="billing-filter"><option value="">Todos</option><option value="pending">Pendiente de pago</option><option value="paid">Facturada</option></select></label>
-            <button id="billing-refresh" class="button-secondary" type="button">Recargar datos</button>
+            <div class="catalog-label"><label for="billing-status">Estado</label><select id="billing-status"><option value="">Todos</option><option value="pending">Pendiente de pago</option><option value="paid">Facturada</option></select></div>
+            <button id="billing-refresh" class="button-secondary button-small" type="button">Actualizar listado</button>
         </div>
-        <p id="billing-status" class="catalog-state" role="status">Cargando registros…</p>
-        <div class="table-scroll"><table class="products-table"><caption class="sr-only">Registros de facturación</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Estado</th><th>Total</th><th>Acciones</th></tr></thead><tbody id="billing-rows"></tbody></table></div>
-        <div class="catalog-pagination"><button id="billing-previous" class="button-secondary" type="button">Anterior</button><span id="billing-page"></span><button id="billing-next" class="button-secondary" type="button">Siguiente</button></div>
+        <p id="billing-loading" class="catalog-state" role="status">Cargando registros…</p>
+        <p id="billing-empty" class="catalog-state" hidden>No hay registros para este estado.</p>
+        <div id="billing-table-container" class="table-scroll" hidden>
+            <table class="products-table"><caption class="sr-only">Ventas pendientes y facturadas</caption><thead><tr><th scope="col">Registro</th><th scope="col">Fecha</th><th scope="col">Estado</th><th scope="col" class="price-cell">Total</th><th scope="col" class="row-actions">Acciones</th></tr></thead><tbody id="billing-rows"></tbody></table>
+        </div>
+        <div id="billing-pagination" class="catalog-pagination" hidden><p id="billing-count" class="muted small-text"></p><nav class="pagination-buttons" aria-label="Páginas de facturación"><button id="billing-previous" class="button-secondary button-small" type="button">← Anterior</button><span id="billing-page-number" aria-live="polite"></span><button id="billing-next" class="button-secondary button-small" type="button">Siguiente →</button></nav></div>
     </div>
-    <dialog id="billing-dialog" class="app-dialog" aria-labelledby="billing-title">
-        <div class="dialog-heading"><h2 id="billing-title">Registro</h2><button id="billing-close" class="dialog-close" type="button" aria-label="Cerrar detalle">×</button></div>
-        <p id="billing-detail-status" class="muted"></p>
-        <div id="billing-company" class="muted"></div>
-        <div id="billing-items"></div>
-        <form id="billing-add-form" class="scan-input-row" hidden><label for="billing-barcode" class="sr-only">Código de barras</label><input id="billing-barcode" maxlength="100" placeholder="Agregar por código de barras" required><button class="button-secondary" type="submit">Agregar</button></form>
-        <p id="billing-total" class="sale-total"></p>
-        <p id="billing-notice" class="field-help" role="status"></p>
-        <div class="dialog-actions">
-            <button id="billing-save" class="button-secondary" type="button" hidden>Guardar cambios</button>
-            <button id="billing-pay" class="button" type="button" hidden>Pagar y facturar</button>
-            <button id="billing-print" class="button" type="button" hidden>Imprimir</button>
-        </div>
+    <dialog id="billing-dialog" class="app-dialog billing-dialog" aria-labelledby="billing-dialog-title">
+        <div class="dialog-heading"><div><p class="eyebrow">Pendiente de pago</p><h2 id="billing-dialog-title">Editar registro</h2></div><button id="billing-close" class="dialog-close" type="button" aria-label="Cerrar edición">×</button></div>
+        <p class="field-help">Puedes agregar o retirar productos y cambiar cantidades. Guarda los cambios antes de pagar.</p>
+        <form id="billing-scan-form"><label for="billing-barcode">Código de barras</label><div class="scan-input-row"><input id="billing-barcode" maxlength="100" autocomplete="off" placeholder="Escanea o escribe el código" required><button class="button" type="submit">Agregar</button></div></form>
+        <form id="billing-edit-form">
+            <div class="table-scroll"><table class="products-table"><caption class="sr-only">Detalle del registro pendiente</caption><thead><tr><th scope="col">Producto</th><th scope="col">Cantidad</th><th scope="col" class="price-cell">Subtotal</th><th scope="col">Acción</th></tr></thead><tbody id="billing-edit-rows"></tbody></table></div>
+            <div class="sale-total"><span>Total</span><strong id="billing-edit-total" aria-live="polite"></strong></div>
+            <div class="dialog-actions"><button id="billing-cancel" class="button-secondary" type="button">Cancelar</button><button id="billing-save" class="button" type="submit">Guardar cambios</button></div>
+        </form>
     </dialog>
 </section>

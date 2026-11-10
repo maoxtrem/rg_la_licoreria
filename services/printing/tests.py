@@ -142,5 +142,74 @@ class UsbPrinterTest(unittest.TestCase):
                 dispose.assert_called_once_with(device)
 
 
+class InvoicePrintingTest(unittest.TestCase):
+    request = PrintingTest.request
+    close_server = PrintingTest.close_server
+
+    def setUp(self):
+        PrintingTest.setUp(self)
+        self.server.printer = MagicMock()
+        self.server.printer.status.return_value = {'connected': True}
+
+    def invoice_payload(self):
+        return {'template': 'invoice', 'data': {'print_job_id': 'a' * 32, 'invoice': {
+            'id': 1, 'number': 'F-000001', 'status': 'paid', 'paid_at': '2026-11-10T07:00:00+00:00',
+            'company': {'name': 'Licorería', 'nit': '00123-4', 'address': 'Calle 10', 'phone': '0012345'},
+            'items': [{'product_id': 1, 'name': 'Ron', 'quantity': 2, 'unit_price': '10.25', 'subtotal': '20.50'}],
+            'total': '20.50'}}}
+
+    def test_invoice_is_sent_once_on_redelivery(self):
+        payload = self.invoice_payload()
+        for _ in range(2):
+            status, result = self.request(payload=payload)
+            self.assertEqual((status, result['status']), (200, 'sent'))
+        self.server.printer.write.assert_called_once()
+        ticket = self.server.printer.write.call_args.args[0]
+        self.assertIn(b'NIT: 00123-4', ticket)
+        self.assertIn(b'20,50', ticket)
+        self.assertIn(b'Licoreria', ticket)
+        job = json.loads((Path(self.directory.name) / ('a' * 32 + '.json')).read_text())
+        self.assertEqual(job['status'], 'sent')
+
+    def test_offline_retry_is_safe(self):
+        self.server.printer.status.return_value = {'connected': False}
+        self.assertEqual(self.request(payload=self.invoice_payload())[0], 503)
+        self.server.printer.write.assert_not_called()
+        self.server.printer.status.return_value = {'connected': True}
+        self.assertEqual(self.request(payload=self.invoice_payload())[0], 200)
+        self.server.printer.write.assert_called_once()
+
+    def test_uncertain_write_is_never_repeated(self):
+        self.server.printer.write.side_effect = PrinterUnavailable('timeout')
+        for _ in range(2):
+            status, result = self.request(payload=self.invoice_payload())
+            self.assertEqual((status, result['status']), (409, 'uncertain'))
+        self.server.printer.write.assert_called_once()
+
+    def test_concurrent_redelivery_sends_one_ticket(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: self.request(payload=self.invoice_payload()), range(4)))
+        self.assertTrue(all(status == 200 for status, _ in results))
+        self.server.printer.write.assert_called_once()
+
+    def test_invoice_validation_and_job_collision(self):
+        payload = self.invoice_payload()
+        payload['data']['invoice']['total'] = '100.00'
+        self.assertEqual(self.request(payload=payload)[0], 422)
+        self.server.printer.write.assert_not_called()
+        self.assertEqual(self.request(payload=self.invoice_payload())[0], 200)
+        payload = self.invoice_payload()
+        payload['data']['invoice']['id'] = 2
+        self.assertEqual(self.request(payload=payload)[0], 409)
+        self.server.printer.write.assert_called_once()
+
+    def test_crash_marker_requires_manual_review(self):
+        payload = self.invoice_payload()
+        job = {'id': 'a' * 32, 'status': 'dispatching', 'data': payload['data']}
+        (Path(self.directory.name) / ('a' * 32 + '.json')).write_text(json.dumps(job))
+        self.assertEqual(self.request(payload=payload)[0], 409)
+        self.server.printer.write.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
