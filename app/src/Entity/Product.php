@@ -27,6 +27,12 @@ class Product
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2)]
     private string $costPrice;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $imageKey = null;
+
+    public function getImageKey(): ?string { return $this->imageKey; }
+    public function setImageKey(?string $key): void { $this->imageKey = $key; }
+
     public function __construct(string $name, string $barcode, string $salePrice, string $costPrice)
     {
         $this->update($name, $barcode, $salePrice, $costPrice);

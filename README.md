@@ -41,7 +41,7 @@ buffering para permitir eventos SSE.
 
 El monolito incluye autenticación y permisos por grupo, Productos y el carrito de
 Ventas. Los detalles de la API están en [app/README.md](app/README.md).
-El bucket indicado por `MINIO_BUCKET` todavía no se crea automáticamente.
+El bucket indicado por `MINIO_BUCKET` se crea automáticamente al cargar la primera imagen de producto.
 
 El servicio `printing` recibe JSON en `POST /print`, lo guarda en
 `./volumes/printing` y responde `202` con estado `received`. Todavía no renderiza

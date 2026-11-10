@@ -15,10 +15,12 @@ export async function startProducts({ actions, onAccessLost }) {
     let products = [];
     let page = 1;
     let total = 0;
+    let barcodeFilter = '';
     const limit = 20;
     let loading = false;
     let busy = false;
     let editingId = null;
+    let previewUrl = null;
     const formDialog = element('product-dialog');
 
     function loseAccess() {
@@ -39,7 +41,10 @@ export async function startProducts({ actions, onAccessLost }) {
         element('product-create').hidden = !permissions.create;
         element('products-readonly').hidden = permissions.create || permissions.update || permissions.delete;
         element('products-actions-heading').hidden = !permissions.update && !permissions.delete;
-        element('products-empty-message').textContent = permissions.create
+        element('products-empty-title').textContent = barcodeFilter ? 'Sin resultados.' : 'Tu catálogo empieza aquí.';
+        element('products-empty-message').textContent = barcodeFilter
+            ? 'No hay productos con ese código de barras. Revisa el código o limpia el filtro.'
+            : permissions.create
             ? 'Añade tu primer producto para comenzar a organizar el catálogo.'
             : 'Todavía no hay productos registrados.';
         renderRows();
@@ -76,6 +81,19 @@ export async function startProducts({ actions, onAccessLost }) {
     function renderRows() {
         const rows = products.map((product) => {
             const row = document.createElement('tr');
+            const imageCell = document.createElement('td');
+            if (product.image_url) {
+                const image = document.createElement('img');
+                image.src = product.image_url;
+                image.alt = product.name;
+                image.className = 'product-thumbnail';
+                image.loading = 'lazy';
+                imageCell.append(image);
+            } else {
+                imageCell.textContent = 'Sin imagen';
+                imageCell.className = 'muted small-text';
+            }
+            row.append(imageCell);
             for (const [value, className] of [
                 [product.name, 'product-name-cell'], [product.barcode, 'barcode-cell'],
                 [number.format(Number(product.sale_price)), 'price-cell'],
@@ -116,10 +134,12 @@ export async function startProducts({ actions, onAccessLost }) {
         element('products-empty').hidden = true;
         element('products-refresh').disabled = true;
         element('product-create').disabled = true;
+        for (const id of ['products-barcode-filter', 'products-filter-submit', 'products-filter-clear']) element(id).disabled = true;
         renderPagination();
+        const listUrl = () => `/api/products?${new URLSearchParams({ page, limit, ...(barcodeFilter ? { barcode: barcodeFilter } : {}) })}`;
         try {
             if (!await refreshPermissions()) return;
-            let result = await api(`/api/products?page=${page}&limit=${limit}`);
+            let result = await api(listUrl());
             if (redirectIfExpired(result.response)) return;
             if (result.response.status === 403) { loseAccess(); return; }
             if (!result.response.ok) throw new Error('No se pudo cargar el catálogo.');
@@ -127,7 +147,7 @@ export async function startProducts({ actions, onAccessLost }) {
             const lastPage = Math.max(1, Math.ceil(total / limit));
             if (page > lastPage) {
                 page = lastPage;
-                result = await api(`/api/products?page=${page}&limit=${limit}`);
+                result = await api(listUrl());
                 if (redirectIfExpired(result.response)) return;
                 if (result.response.status === 403) { loseAccess(); return; }
                 if (!result.response.ok) throw new Error('No se pudo cargar el catálogo.');
@@ -144,12 +164,13 @@ export async function startProducts({ actions, onAccessLost }) {
             element('products-loading').hidden = true;
             element('products-refresh').disabled = false;
             element('product-create').disabled = false;
+            for (const id of ['products-barcode-filter', 'products-filter-submit', 'products-filter-clear']) element(id).disabled = false;
             renderPagination();
         }
     }
 
     function clearFormErrors() {
-        for (const [input, error] of Object.values(fields)) {
+        for (const [input, error] of [...Object.values(fields), ['product-image', 'product-image-error']]) {
             element(input).removeAttribute('aria-invalid');
             element(error).hidden = true;
         }
@@ -189,6 +210,7 @@ export async function startProducts({ actions, onAccessLost }) {
             editingId = id;
             element('product-form').reset();
             clearFormErrors();
+            showImagePreview(product?.image_url);
             for (const [key, [input]] of Object.entries(fields)) element(input).value = product?.[key] ?? '';
             element('product-dialog-title').textContent = id === null ? 'Nuevo producto' : 'Editar producto';
             setBusy(false);
@@ -207,8 +229,8 @@ export async function startProducts({ actions, onAccessLost }) {
         if (!csrf.response.ok) throw new Error('No se pudo preparar la solicitud.');
         return api(path, {
             method,
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.data.products },
-            ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+            headers: { ...(data instanceof FormData ? {} : { 'Content-Type': 'application/json' }), 'X-CSRF-Token': csrf.data.products },
+            ...(data === undefined ? {} : { body: data instanceof FormData ? data : JSON.stringify(data) }),
         });
     }
 
@@ -226,8 +248,9 @@ export async function startProducts({ actions, onAccessLost }) {
             let first = null;
             if (showFieldErrors) {
                 for (const [key, text] of Object.entries(result.data?.errors ?? {})) {
-                    if (!fields[key]) continue;
-                    const [input, error] = fields[key];
+                    const field = key === 'image' ? ['product-image', 'product-image-error'] : fields[key];
+                    if (!field) continue;
+                    const [input, error] = field;
                     element(input).setAttribute('aria-invalid', 'true');
                     element(error).textContent = text;
                     element(error).hidden = false;
@@ -251,7 +274,14 @@ export async function startProducts({ actions, onAccessLost }) {
             const data = Object.fromEntries(Object.entries(fields).map(([key, [input]]) => [
                 key, key.endsWith('_price') ? element(input).value.trim().replace(',', '.') : element(input).value.trim(),
             ]));
-            const result = await write(editingId === null ? '/api/products' : `/api/products/${editingId}`, editingId === null ? 'POST' : 'PUT', data);
+            const image = element('product-image').files[0];
+            let payload = data;
+            if (image) {
+                payload = new FormData();
+                payload.append('data', JSON.stringify(data));
+                payload.append('image', image);
+            }
+            const result = await write(editingId === null ? '/api/products' : `/api/products/${editingId}`, editingId === null || image ? 'POST' : 'PUT', payload);
             if (await handleFailure(result, true)) return;
             formDialog.close();
             void notifySuccess(editingId === null ? 'Producto creado correctamente.' : 'Cambios guardados correctamente.');
@@ -282,6 +312,47 @@ export async function startProducts({ actions, onAccessLost }) {
         }
     }
 
+    function showImagePreview(url) {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+        const preview = element('product-image-preview');
+        preview.hidden = !url;
+        if (url) preview.src = url;
+        else preview.removeAttribute('src');
+    }
+
+    element('product-image').addEventListener('change', () => {
+        const file = element('product-image').files[0];
+        showImagePreview(null);
+        element('product-image').removeAttribute('aria-invalid');
+        element('product-image-error').hidden = true;
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            element('product-image').value = '';
+            element('product-image').setAttribute('aria-invalid', 'true');
+            element('product-image-error').textContent = 'Selecciona una imagen JPG, PNG o WebP de hasta 2 MB.';
+            element('product-image-error').hidden = false;
+            return;
+        }
+        previewUrl = URL.createObjectURL(file);
+        element('product-image-preview').src = previewUrl;
+        element('product-image-preview').hidden = false;
+    });
+    formDialog.addEventListener('close', () => showImagePreview(null));
+
+    function filterProducts(value) {
+        if (busy || loading) return;
+        barcodeFilter = value.trim();
+        element('products-barcode-filter').value = barcodeFilter;
+        page = 1;
+        void loadProducts();
+    }
+
+    element('products-filter-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        filterProducts(element('products-barcode-filter').value);
+    });
+    element('products-filter-clear').addEventListener('click', () => filterProducts(''));
     element('product-create').addEventListener('click', () => openProduct());
     for (const id of ['product-close', 'product-cancel']) element(id).addEventListener('click', () => { if (!busy) formDialog.close(); });
     for (const dialog of [formDialog]) dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });

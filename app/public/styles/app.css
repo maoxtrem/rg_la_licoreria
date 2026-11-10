@@ -86,6 +86,8 @@ button:disabled { opacity: .6; cursor: wait; }
 .catalog-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fffdf9; }
 .catalog-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
 .catalog-label { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.products-filter-field { flex: 1 1 260px; min-width: 0; }
+.products-filter-actions { display: flex; gap: 8px; flex-wrap: wrap; align-self: flex-end; }
 .catalog-label h2 { margin: 0; font: 650 14px/1.6 system-ui, sans-serif; }
 .count-badge { min-width: 24px; padding: 1px 8px; border-radius: 20px; background: #eee9e1; color: var(--muted); font-size: 11px; text-align: center; }
 .button-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 11px 18px; border: 1px solid #d4cbbf; border-radius: 5px; background: #fffdf9; color: var(--ink); cursor: pointer; font: 600 13px/1.6 system-ui, sans-serif; }
@@ -189,3 +191,6 @@ input[aria-invalid="true"] { border-color: #a64c61; background: #fff8f8; }
 .billing-dialog .table-scroll { margin-top: 20px; }
 .billing-dialog input[type="number"] { min-width: 75px; max-width: 100px; }
 #billing-status { padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fffdf9; color: var(--ink); }
+
+.product-thumbnail { display: block; width: 56px; height: 56px; object-fit: contain; border-radius: 6px; background: white; }
+.product-image-preview { max-width: 100%; width: 180px; height: 150px; object-fit: contain; margin-top: 12px; }

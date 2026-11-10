@@ -3,6 +3,7 @@
 SMOKE_USERNAME y SMOKE_PASSWORD deben señalar el usuario temporal creado por
 api_auth_smoke.ApiAuthenticationTest.fixture. Su grupo también debe ser temporal.
 """
+import base64
 import json
 import os
 import re
@@ -137,6 +138,39 @@ class ProductsBrowserTest(unittest.TestCase):
         expect(row).to_have_count(0)
         expect(self.page.locator('.swal2-popup')).to_contain_text('eliminado correctamente')
 
+    def test_image_upload_preview_and_replacement(self):
+        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+        image = {'name': 'producto.png', 'mimeType': 'image/png', 'buffer': png}
+        self.login_ui()
+        self.page.locator('#product-create').click()
+        name = 'Imagen ' + secrets.token_hex(6)
+        self.fill_product(name, '000' + secrets.token_hex(10))
+        self.page.locator('#product-image').set_input_files(image)
+        expect(self.page.locator('#product-image-preview')).to_be_visible()
+        response = self.save('POST')
+        self.assertEqual(response.status, 201, response.text())
+        product = response.json()['data']
+        self.created.append(product['id'])
+        expect(self.page.locator('#product-dialog')).to_be_hidden()
+        row = self.page.locator('#products-rows tr').filter(has_text=name)
+        expect(row.locator('img')).to_be_visible()
+        expect(row.locator('img')).to_have_js_property('naturalWidth', 1)
+        row.get_by_role('button', name='Editar ' + name, exact=True).click()
+        expect(self.page.locator('#product-image-preview')).to_have_attribute('src', product['image_url'])
+        self.page.locator('#product-image').set_input_files(image)
+        response = self.save('POST')
+        self.assertEqual(response.status, 200, response.text())
+        replaced = response.json()['data']['image_url']
+        self.assertNotEqual(replaced, product['image_url'])
+        expect(self.page.locator('#product-dialog')).to_be_hidden()
+        expect(row.locator('img')).to_have_attribute('src', replaced)
+        row.get_by_role('button', name='Editar ' + name, exact=True).click()
+        response = self.save('PUT')
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.json()['data']['image_url'], replaced)
+        expect(self.page.locator('#product-dialog')).to_be_hidden()
+        self.assertEqual(self.errors, [])
+
     def test_duplicate_barcode_stays_in_form(self):
         product = self.create_api()
         self.login_ui()
@@ -259,6 +293,30 @@ class ProductsBrowserTest(unittest.TestCase):
         self.page.unroute('**/api/products?*')
         self.refresh()
         expect(self.page.locator('.swal2-popup')).to_be_hidden()
+
+    def test_barcode_filter_and_clear(self):
+        products = [self.create_api() for _ in range(21)]
+        self.login_ui(normal=True)
+        self.page.locator('#products-next').click()
+        expect(self.page.locator('#products-page-number')).to_have_text(re.compile('2 de'))
+        self.page.locator('#products-barcode-filter').fill(products[-1]['barcode'])
+        self.page.locator('#products-barcode-filter').press('Enter')
+        expect(self.page.locator('#products-count')).to_have_text('1')
+        expect(self.page.locator('#products-rows tr')).to_have_count(1)
+        expect(self.page.locator('#products-rows')).to_contain_text(products[-1]['barcode'])
+        expect(self.page.locator('#products-page-number')).to_have_text('1 de 1')
+        self.refresh()
+        expect(self.page.locator('#products-rows tr')).to_have_count(1)
+        self.page.locator('#products-barcode-filter').fill('missing-' + secrets.token_hex(10))
+        self.page.locator('#products-filter-submit').click()
+        expect(self.page.locator('#products-empty')).to_be_visible()
+        expect(self.page.locator('#products-empty-message')).to_contain_text('No hay productos con ese código')
+        expect(self.page.locator('#products-count')).to_have_text('0')
+        self.page.locator('#products-filter-clear').click()
+        expect(self.page.locator('#products-rows tr')).to_have_count(20)
+        expect(self.page.locator('#products-barcode-filter')).to_have_value('')
+        expect(self.page.locator('#products-page-number')).to_have_text(re.compile('1 de'))
+        self.assertEqual(self.errors, [])
 
     def test_expired_session_returns_to_login(self):
         self.login_ui()

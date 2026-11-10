@@ -13,16 +13,27 @@
             <div class="catalog-label"><h2>Catálogo de productos</h2><span id="products-count" class="count-badge">0</span><span id="products-readonly" class="muted small-text" hidden>Solo lectura</span></div>
             <button id="products-refresh" class="button-secondary button-small" type="button">Actualizar listado</button>
         </div>
+        <form id="products-filter-form" class="catalog-toolbar">
+            <div class="products-filter-field">
+                <label for="products-barcode-filter">Filtrar por código de barras</label>
+                <input id="products-barcode-filter" name="barcode" type="text" maxlength="100" autocomplete="off" spellcheck="false" placeholder="Escanea o escribe el código completo">
+            </div>
+            <div class="products-filter-actions">
+                <button id="products-filter-submit" class="button button-small" type="submit">Buscar</button>
+                <button id="products-filter-clear" class="button-secondary button-small" type="button">Limpiar filtro</button>
+            </div>
+        </form>
         <p id="products-loading" class="catalog-state" role="status">Cargando productos…</p>
         <div id="products-empty" class="catalog-state" hidden>
             <div class="empty-icon" aria-hidden="true">◇</div>
-            <h2>Tu catálogo empieza aquí.</h2>
+            <h2 id="products-empty-title">Tu catálogo empieza aquí.</h2>
             <p id="products-empty-message" class="muted">Todavía no hay productos registrados.</p>
         </div>
         <div id="products-table-container" class="table-scroll" hidden>
             <table class="products-table">
                 <caption class="sr-only">Catálogo de productos con precios de venta y costo</caption>
                 <thead><tr>
+                    <th scope="col">Imagen</th>
                     <th scope="col">Producto</th>
                     <th scope="col">Código de barras</th>
                     <th scope="col" class="price-cell">Precio de venta</th>
@@ -44,7 +55,7 @@
 
     <dialog id="product-dialog" class="app-dialog" aria-labelledby="product-dialog-title">
         <div class="dialog-heading"><div><p class="eyebrow">Catálogo de productos</p><h2 id="product-dialog-title">Nuevo producto</h2></div><button id="product-close" class="dialog-close" type="button" aria-label="Cerrar formulario">×</button></div>
-        <p class="muted small-text">Completa los datos del producto. Todos los campos son obligatorios.</p>
+        <p class="muted small-text">Completa los datos del producto. Los datos del producto son obligatorios. La imagen es opcional.</p>
         <form id="product-form">
             <fieldset id="product-fields" class="form-fields">
                 <label for="product-name">Nombre del producto</label>
@@ -54,6 +65,11 @@
                 <input id="product-barcode" name="barcode" type="text" maxlength="100" required aria-describedby="product-barcode-help product-barcode-error">
                 <p id="product-barcode-help" class="field-help">Debe ser único. Se conservan los ceros iniciales.</p>
                 <p id="product-barcode-error" class="field-error" hidden></p>
+                <label for="product-image">Imagen del producto</label>
+                <input id="product-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="product-image-help product-image-error">
+                <p id="product-image-help" class="field-help">JPG, PNG o WebP de hasta 2 MB. Selecciona otra imagen para reemplazar la actual.</p>
+                <p id="product-image-error" class="field-error" hidden></p>
+                <img id="product-image-preview" class="product-image-preview" alt="Vista previa de la imagen del producto" hidden>
                 <div class="price-fields">
                     <div><label for="product-sale-price">Precio de venta</label><input id="product-sale-price" name="sale_price" type="text" inputmode="decimal" pattern="[0-9]{1,10}([.,][0-9]{1,2})?" maxlength="13" placeholder="0,00" required aria-describedby="product-price-help product-sale-price-error"><p id="product-sale-price-error" class="field-error" hidden></p></div>
                     <div><label for="product-cost-price">Precio de costo</label><input id="product-cost-price" name="cost_price" type="text" inputmode="decimal" pattern="[0-9]{1,10}([.,][0-9]{1,2})?" maxlength="13" placeholder="0,00" required aria-describedby="product-price-help product-cost-price-error"><p id="product-cost-price-error" class="field-error" hidden></p></div>

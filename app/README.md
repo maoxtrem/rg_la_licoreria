@@ -209,6 +209,28 @@ PATCH actualiza solo los campos enviados. Datos inválidos: 422; código duplica
 barras y ambos precios. `public/scripts/products.js` consume la API existente;
 `public/scripts/api.js` comparte el cliente HTTP con la autenticación.
 
+El filtro por código de barras busca una coincidencia exacta en todo el catálogo.
+Permite escribir o escanear el código y pulsar Enter o **Buscar**. **Limpiar filtro**
+restaura el listado. La API admite `GET /api/products?barcode=0007701234567`;
+el total y la paginación corresponden a los resultados filtrados. Un código vacío
+omite el filtro y los ceros iniciales se conservan.
+
+Cada producto admite una imagen opcional JPG, PNG o WebP de hasta 2 MB y 20
+megapíxeles. El formulario muestra una vista previa y el catálogo una miniatura.
+Las imágenes se guardan en MinIO bajo `products/` con nombres aleatorios; MySQL
+solo almacena la clave del objeto. El bucket `MINIO_BUCKET` se crea en la primera
+carga si todavía no existe. Se usan `MINIO_ENDPOINT`, `MINIO_REGION`,
+`MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` desde `.env.local`.
+
+Las solicitudes JSON existentes siguen funcionando. Para enviar una imagen,
+usa `multipart/form-data` con `data` (JSON con los campos habituales) e `image`
+(archivo): `POST /api/products` para crear, `POST /api/products/{id}` para editar
+(requiere `products.update`). La respuesta incluye `image_url`, o `null` cuando
+no hay imagen. `GET /api/products/{id}/image` requiere `products.view` y entrega
+la imagen desde el bucket privado. Editar sin archivo conserva la imagen;
+reemplazarla o eliminar el producto borra el objeto anterior de MinIO. Si falla
+esa limpieza, el servidor registra la clave para su eliminación posterior.
+
 - `view`: permite abrir el catálogo y consultar el listado.
 - `create`: muestra **Nuevo producto** y permite guardar el alta.
 - `update`: muestra **Editar** y permite guardar cambios.
