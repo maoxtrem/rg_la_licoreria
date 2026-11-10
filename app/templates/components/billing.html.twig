@@ -6,13 +6,27 @@
             <div class="catalog-label"><label for="billing-status">Estado</label><select id="billing-status"><option value="">Todos</option><option value="pending">Pendiente de pago</option><option value="paid">Facturada</option></select></div>
             <button id="billing-refresh" class="button-secondary button-small" type="button">Actualizar listado</button>
         </div>
+        <div class="catalog-toolbar">
+            <div class="products-filter-field"><label for="billing-number-filter">Número de factura</label><input id="billing-number-filter" name="number" type="search" maxlength="20" autocomplete="off" placeholder="Ejemplo: F-000123 o 123"></div>
+            <div class="products-filter-field"><label for="billing-date-from">Desde</label><input id="billing-date-from" name="from" type="date" aria-describedby="billing-date-help"></div>
+            <div class="products-filter-field"><label for="billing-date-to">Hasta</label><input id="billing-date-to" name="to" type="date" aria-describedby="billing-date-help"></div>
+        </div>
+        <p id="billing-date-help" class="catalog-state small-text">Fecha de creación de la factura. Incluye ambos días, en hora de Colombia.</p>
         <p id="billing-loading" class="catalog-state" role="status">Cargando registros…</p>
-        <p id="billing-empty" class="catalog-state" hidden>No hay registros para este estado.</p>
+        <p id="billing-empty" class="catalog-state" hidden>No hay facturas que coincidan con los filtros.</p>
         <div id="billing-table-container" class="table-scroll" hidden>
             <table class="products-table"><caption class="sr-only">Ventas pendientes y facturadas</caption><thead><tr><th scope="col">Registro</th><th scope="col">Fecha</th><th scope="col">Estado</th><th scope="col" class="price-cell">Total</th><th scope="col" class="row-actions">Acciones</th></tr></thead><tbody id="billing-rows"></tbody></table>
         </div>
         <div id="billing-pagination" class="catalog-pagination" hidden><p id="billing-count" class="muted small-text"></p><nav class="pagination-buttons" aria-label="Páginas de facturación"><button id="billing-previous" class="button-secondary button-small" type="button">← Anterior</button><span id="billing-page-number" aria-live="polite"></span><button id="billing-next" class="button-secondary button-small" type="button">Siguiente →</button></nav></div>
     </div>
+    <dialog id="billing-detail-dialog" class="app-dialog billing-dialog" aria-labelledby="billing-detail-title">
+        <div class="dialog-heading"><div><p class="eyebrow">Contenido de la factura</p><h2 id="billing-detail-title"></h2></div><button id="billing-detail-close" class="dialog-close" type="button" aria-label="Cerrar contenido de la factura">×</button></div>
+        <p id="billing-detail-status" class="muted"></p>
+        <p id="billing-detail-date" class="muted"></p>
+        <div class="table-scroll"><table class="products-table"><caption class="sr-only">Productos de la factura</caption><thead><tr><th scope="col">Producto</th><th scope="col">Cantidad</th><th scope="col" class="price-cell">Precio unitario</th><th scope="col" class="price-cell">Subtotal</th></tr></thead><tbody id="billing-detail-rows"></tbody></table></div>
+        <div class="sale-total"><span>Total COP</span><strong id="billing-detail-total"></strong></div>
+        <div class="dialog-actions"><button id="billing-detail-done" class="button-secondary" type="button">Cerrar</button></div>
+    </dialog>
     <dialog id="billing-dialog" class="app-dialog billing-dialog" aria-labelledby="billing-dialog-title">
         <div class="dialog-heading"><div><p class="eyebrow">Pendiente de pago</p><h2 id="billing-dialog-title">Editar registro</h2></div><button id="billing-close" class="dialog-close" type="button" aria-label="Cerrar edición">×</button></div>
         <p class="field-help">Puedes agregar o retirar productos y cambiar cantidades. Guarda los cambios antes de pagar.</p>

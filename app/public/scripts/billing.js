@@ -13,6 +13,13 @@ export async function startBilling({ actions, onAccessLost }) {
     let permissions = actions, busy = false, lost = false, page = 1, pages = 1;
     let editing = null, items = [];
     const dialog = element('billing-dialog');
+    const detailDialog = element('billing-detail-dialog');
+    let numberFilter = '';
+    const dateParts = Object.fromEntries(new Intl.DateTimeFormat('en', {
+        timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+    const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+    for (const id of ['billing-date-from', 'billing-date-to']) element(id).value = today;
     // Keep a job reference after an uncertain response so retrying cannot duplicate it.
     const printJobs = new Map();
     function state() {
@@ -21,7 +28,7 @@ export async function startBilling({ actions, onAccessLost }) {
         element('billing-next').disabled = busy || page >= pages;
         element('billing-save').disabled = busy || !items.length || !permissions.update;
     }
-    function close() { dialog.close(); editing = null; items = []; }
+    function close() { dialog.close(); detailDialog.close(); editing = null; items = []; }
     async function request(path, options) {
         const result = await api(path, options);
         if (result.response.status === 401) { location.replace('/login'); throw new Error('La sesión expiró.'); }
@@ -60,11 +67,14 @@ export async function startBilling({ actions, onAccessLost }) {
         node.setAttribute('aria-label', label); node.addEventListener('click', callback); return node;
     }
     async function load() {
+        const from = element('billing-date-from').value, to = element('billing-date-to').value;
+        if (from && to && from > to) throw new Error('La fecha desde no puede ser posterior a la fecha hasta.');
         if (!await authorize()) return;
         element('billing-loading').hidden = false;
         try {
-            const query = new URLSearchParams({ page, limit: 20 });
+            const query = new URLSearchParams({ page, limit: 20, from, to });
             if (element('billing-status').value) query.set('status', element('billing-status').value);
+            if (numberFilter) query.set('number', numberFilter);
             const result = await request(`/api/billing?${query}`);
             pages = Math.max(1, Math.ceil(result.pagination.total / 20));
             if (page > pages) { page = pages; return await load(); }
@@ -72,11 +82,12 @@ export async function startBilling({ actions, onAccessLost }) {
                 const row = document.createElement('tr'); row.dataset.invoiceId = invoice.id;
                 row.append(cell(invoice.number), cell(new Date(invoice.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' })), cell(invoice.status === 'paid' ? 'Facturada' : 'Pendiente de pago'), cell(money(invoice.total), 'price-cell'));
                 const controls = cell('', 'row-actions');
+                controls.append(button('Ver contenido', `Ver contenido de ${invoice.number}`, () => run(() => show(invoice.id))));
                 if (invoice.status === 'paid') {
                     controls.append(button('Imprimir', `Imprimir ${invoice.number}`, () => run(() => print(invoice.id))));
                 } else if (permissions.update) {
                     controls.append(button('Editar', `Editar ${invoice.number}`, () => run(() => edit(invoice.id))), button('Pagar', `Pagar ${invoice.number}`, () => run(() => pay(invoice.id))));
-                } else controls.textContent = 'Solo lectura';
+                }
                 row.append(controls); return row;
             });
             element('billing-rows').replaceChildren(...rows);
@@ -86,6 +97,21 @@ export async function startBilling({ actions, onAccessLost }) {
             element('billing-count').textContent = `${result.pagination.total} registros`;
             element('billing-page-number').textContent = `${page} de ${pages}`;
         } finally { element('billing-loading').hidden = true; state(); }
+    }
+    async function show(id) {
+        if (!await authorize()) return;
+        const { data } = await request(`/api/billing/${id}`);
+        element('billing-detail-title').textContent = data.number;
+        element('billing-detail-status').textContent = data.status === 'paid' ? 'Facturada' : 'Pendiente de pago';
+        const date = (value) => new Date(value).toLocaleString('es-CO', { timeZone: 'America/Bogota' });
+        element('billing-detail-date').textContent = `Creada: ${date(data.created_at)}` + (data.paid_at ? ` · Pagada: ${date(data.paid_at)}` : '');
+        element('billing-detail-rows').replaceChildren(...data.items.map((item) => {
+            const row = document.createElement('tr');
+            row.append(cell(item.name), cell(item.quantity), cell(money(item.unit_price), 'price-cell'), cell(money(item.subtotal), 'price-cell'));
+            return row;
+        }));
+        element('billing-detail-total').textContent = money(data.total);
+        detailDialog.showModal();
     }
     async function edit(id) {
         if (!await authorize('update')) return;
@@ -156,7 +182,15 @@ export async function startBilling({ actions, onAccessLost }) {
     });
     for (const id of ['billing-close', 'billing-cancel']) element(id).addEventListener('click', close);
     dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); else close(); });
+    for (const id of ['billing-detail-close', 'billing-detail-done']) element(id).addEventListener('click', () => detailDialog.close());
+    detailDialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
+    element('billing-number-filter').addEventListener('change', () => {
+        void run(async () => { numberFilter = element('billing-number-filter').value.trim(); page = 1; await load(); });
+    });
     element('billing-refresh').addEventListener('click', () => run(load));
+    for (const id of ['billing-date-from', 'billing-date-to']) element(id).addEventListener('change', () => {
+        page = 1; void run(load);
+    });
     element('billing-status').addEventListener('change', () => { page = 1; void run(load); });
     element('billing-previous').addEventListener('click', () => { page--; void run(load); });
     element('billing-next').addEventListener('click', () => { page++; void run(load); });

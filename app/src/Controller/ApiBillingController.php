@@ -8,6 +8,7 @@ use App\Http\ApiInput;
 use App\Message\PrintInvoice;
 use App\Sales\CartException;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\DBAL\Types\Types;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -26,9 +27,34 @@ class ApiBillingController extends AbstractController
         $status = $request->query->get('status');
         if ($status !== null && !in_array($status, ['pending', 'paid'], true)) throw new CartException(422, 'Estado no válido.');
         $criteria = $status ? ['status' => $status] : [];
-        $repository = $this->em->getRepository(Invoice::class);
-        return $this->json(['data' => array_map(fn (Invoice $invoice) => $invoice->toArray(), $repository->findBy($criteria, ['id' => 'DESC'], $pagination['limit'], $pagination['offset'])),
-            'pagination' => ['page' => $pagination['page'], 'limit' => $pagination['limit'], 'total' => $repository->count($criteria)]], headers: ['Cache-Control' => 'no-store']);
+        $number = trim($request->query->get('number', ''));
+        if ($number !== '') {
+            if (!preg_match('/^(?:F-)?([0-9]{1,18})$/iD', $number, $match)) throw new CartException(422, 'Incluye un número de factura válido, por ejemplo F-000123 o 123.');
+            $criteria['id'] = (int) $match[1];
+        }
+        $today = (new \DateTimeImmutable('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d');
+        $from = $this->filterDate($request->query->get('from', $today));
+        $to = $this->filterDate($request->query->get('to', $today));
+        if ($from && $to && $from > $to) throw new CartException(422, 'La fecha desde no puede ser posterior a la fecha hasta.');
+        $query = $this->em->getRepository(Invoice::class)->createQueryBuilder('i');
+        foreach ($criteria as $field => $value) {
+            $query->andWhere('i.'.$field.' = :'.$field)->setParameter($field, $value);
+        }
+        $utc = new \DateTimeZone('UTC');
+        if ($from) $query->andWhere('i.createdAt >= :from')->setParameter('from', $from->setTimezone($utc), Types::DATETIME_IMMUTABLE);
+        if ($to) $query->andWhere('i.createdAt < :to')->setParameter('to', $to->modify('+1 day')->setTimezone($utc), Types::DATETIME_IMMUTABLE);
+        $total = (clone $query)->select('COUNT(i.id)')->getQuery()->getSingleScalarResult();
+        $invoices = $query->orderBy('i.id', 'DESC')->setMaxResults($pagination['limit'])->setFirstResult($pagination['offset'])->getQuery()->getResult();
+        return $this->json(['data' => array_map(fn (Invoice $invoice) => $invoice->toArray(), $invoices),
+            'pagination' => ['page' => $pagination['page'], 'limit' => $pagination['limit'], 'total' => (int) $total]], headers: ['Cache-Control' => 'no-store']);
+    }
+
+    private function filterDate(string $value): ?\DateTimeImmutable
+    {
+        if ($value === '') return null;
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, new \DateTimeZone('America/Bogota'));
+        if (!$date || $date->format('Y-m-d') !== $value) throw new CartException(422, 'Incluye una fecha válida con formato AAAA-MM-DD.');
+        return $date;
     }
 
     #[Route('/product', name: 'api_billing_product', defaults: ['_permission_action' => 'update'], methods: ['GET'])]

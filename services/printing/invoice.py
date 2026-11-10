@@ -15,6 +15,8 @@ from printer import PrinterUnavailable
 import usb.core
 
 WIDTH = 42
+# ESC p: drawer connector pin 2, 100 ms on / 500 ms off.
+OPEN_CASH_DRAWER = b'\x1bp\x00\x32\xfa'
 
 
 def printable(value):
@@ -73,7 +75,8 @@ def render_invoice(data):
     if total != amount(invoice.get('total')):
         raise ValueError('Total no válido.')
     lines.extend(['-' * WIDTH, 'TOTAL COP', money(total).rjust(WIDTH), '-' * WIDTH, 'Gracias por su compra'.center(WIDTH)])
-    return job_id, b'\x1b@' + ('\n'.join(lines) + '\n\n\n\n').encode('ascii') + b'\x1dV\x01'
+    # Queue the pulse after printing and cutting, in the same deduplicated job.
+    return job_id, b'\x1b@' + ('\n'.join(lines) + '\n\n\n\n').encode('ascii') + b'\x1dV\x01' + OPEN_CASH_DRAWER
 
 
 def save_job(directory, job):

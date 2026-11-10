@@ -1,5 +1,17 @@
 # Receptor de impresión
 
+## Apertura de caja al imprimir facturas
+
+Los trabajos con `template: "invoice"` imprimen la factura pagada, cortan el
+papel y envían la orden de apertura de caja, en ese orden y en el mismo envío
+USB. La caja debe estar conectada al puerto de cajón de la impresora.
+Se usa [ESC p](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/esc_lp.html)
+con pin 2, pulso de 100 ms y reposo de 500 ms. La deduplicación del trabajo
+evita volver a imprimir o enviar el pulso si se recibe de nuevo el mismo trabajo.
+Los envíos inciertos no se repiten automáticamente. El estado `sent` confirma
+el envío USB, no la impresión ni la apertura física. El ticket de prueba
+`printer.py --test` solo imprime y corta.
+
 Servicio interno e independiente del monolito, implementado con Python 3.12. El transporte USB usa PyUSB y libusb. Recibe solicitudes y conserva su JSON; todavía no
 renderiza plantillas ni envía datos a una impresora.
 

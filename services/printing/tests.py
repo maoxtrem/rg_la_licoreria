@@ -168,6 +168,8 @@ class InvoicePrintingTest(unittest.TestCase):
         self.assertIn(b'NIT: 00123-4', ticket)
         self.assertIn(b'20,50', ticket)
         self.assertIn(b'Licoreria', ticket)
+        self.assertTrue(ticket.endswith(b'\x1dV\x01\x1bp\x00\x32\xfa'))
+        self.assertEqual(ticket.count(b'\x1bp\x00\x32\xfa'), 1)
         job = json.loads((Path(self.directory.name) / ('a' * 32 + '.json')).read_text())
         self.assertEqual(job['status'], 'sent')
 

@@ -84,6 +84,27 @@ $em->createQuery('DELETE FROM App\Entity\Invoice i WHERE i.createdBy = :id')->se
         self.assertNotIn(paid['id'], pending_ids)
         self.assertEqual(self.billing(f'/{paid["id"]}', 'PATCH', {'revision': paid['revision'], 'items': []})[0], 409)
 
+    def test_billing_number_filter_and_readonly_detail(self):
+        group = self.prepare_billing()
+        product = self.sell_product()
+        invoice, _ = self.checkout(product)
+        other, _ = self.checkout(product, 'paid')
+        self.grant(group, ['billing.view'])
+        for number in [invoice['number'], str(invoice['id']), invoice['number'].lower()]:
+            status, result = self.billing('?number=' + number + '&limit=1')
+            self.assertEqual(status, 200, result)
+            self.assertEqual([entry['id'] for entry in result['data']], [invoice['id']])
+            self.assertEqual(result['pagination']['total'], 1)
+        for suffix in ['&status=paid', '&page=2&limit=1']:
+            status, result = self.billing('?number=' + invoice['number'] + suffix)
+            self.assertEqual(status, 200)
+            self.assertEqual(result['data'], [])
+        self.assertEqual(self.billing('?number=0')[1]['pagination']['total'], 0)
+        for number in ['invalid', 'F-', '-1', '1%25', '9' * 21]:
+            self.assertEqual(self.billing('?number=' + number)[0], 422)
+        self.assertEqual(self.billing(f'/{invoice["id"]}')[1]['data'], invoice)
+        self.assertEqual(self.billing(f'/{other["id"]}')[1]['data'], other)
+
     def test_billing_permissions_and_invalid_edit(self):
         group = self.prepare_billing()
         product = self.sell_product()
