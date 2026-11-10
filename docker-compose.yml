@@ -1,0 +1,114 @@
+name: rg_la_licoreria
+
+services:
+  proxy:
+    image: nginx:stable-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./app:/var/www/app:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      php:
+        condition: service_healthy
+      mercure:
+        condition: service_started
+    restart: always
+
+  php:
+    image: rg-la-licoreria-php:local
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    volumes:
+      - ./app:/var/www/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(is_resource(@fsockopen('127.0.0.1', 9000)) ? 0 : 1);"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  worker:
+    image: rg-la-licoreria-php:local
+    pull_policy: never
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    command: ["php", "bin/console", "messenger:consume", "async", "--time-limit=3600", "--memory-limit=128M", "--no-interaction"]
+    volumes:
+      - ./app:/var/www/app
+    environment:
+      MESSENGER_CONSUMER_NAME: worker-1
+    depends_on:
+      php:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: always
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./volumes/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Define MYSQL_DATABASE in app/.env.local}
+      MYSQL_USER: ${MYSQL_USER:?Define MYSQL_USER in app/.env.local}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Define MYSQL_PASSWORD in app/.env.local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD in app/.env.local}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./volumes/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysql -h 127.0.0.1 -u root -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: always
+
+  minio:
+    build:
+      context: .
+      dockerfile: docker/minio/Dockerfile
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Define MINIO_ROOT_USER in app/.env.local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD in app/.env.local}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - ./volumes/minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  mercure:
+    image: dunglas/mercure:v0.16
+    environment:
+      SERVER_NAME: ":80"
+      MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_JWT_SECRET:?Define MERCURE_JWT_SECRET in app/.env.local}
+      MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_JWT_SECRET:?Define MERCURE_JWT_SECRET in app/.env.local}
+      MERCURE_EXTRA_DIRECTIVES: "cors_origins ${APP_URL:-http://localhost}"
+    volumes:
+      - ./volumes/mercure/data:/data
+      - ./volumes/mercure/config:/config
+    restart: always
