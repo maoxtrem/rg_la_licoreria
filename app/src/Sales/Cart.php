@@ -49,7 +49,7 @@ class Cart
         $session->set($this->key($user), $valid);
 
         return ['items' => $items, 'line_count' => count($items), 'quantity' => $units,
-            'total' => self::money($total), 'removed_unavailable' => $removed];
+            'total' => self::money($total), 'checkout_key' => $this->checkoutKey($session, $user), 'removed_unavailable' => $removed];
     }
 
     public function scan(SessionInterface $session, User $user, string $barcode): array
@@ -66,6 +66,7 @@ class Cart
         if ($quantity > self::MAX_QUANTITY) throw new CartException(422, 'La cantidad máxima por producto es 9999.');
         $quantities[$id] = $quantity;
         $session->set($this->key($user), $quantities);
+        $session->remove($this->key($user).'.checkout');
 
         return $this->read($session, $user);
     }
@@ -77,6 +78,7 @@ class Cart
         if (!isset($quantities[$id]) || !$this->entityManager->find(Product::class, $id)) throw new CartException(404, 'El producto ya no está en el carrito.');
         $quantities[$id] = $quantity;
         $session->set($this->key($user), $quantities);
+        $session->remove($this->key($user).'.checkout');
 
         return $this->read($session, $user);
     }
@@ -87,6 +89,7 @@ class Cart
         if (!isset($quantities[$id])) throw new CartException(404, 'El producto ya no está en el carrito.');
         unset($quantities[$id]);
         $session->set($this->key($user), $quantities);
+        $session->remove($this->key($user).'.checkout');
 
         return $this->read($session, $user);
     }
@@ -94,7 +97,15 @@ class Cart
     public function clear(SessionInterface $session, User $user): array
     {
         $session->remove($this->key($user));
+        $session->remove($this->key($user).'.checkout');
         return $this->read($session, $user);
+    }
+
+    private function checkoutKey(SessionInterface $session, User $user): string
+    {
+        $key = $this->key($user).'.checkout';
+        if (!$session->has($key)) $session->set($key, bin2hex(random_bytes(16)));
+        return $session->get($key);
     }
 
     private static function money(int $cents): string

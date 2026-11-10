@@ -13,6 +13,7 @@
             {% set operations = [
                 {path: '/productos', label: 'Productos', icon: 'M4 7 12 3l8 4v10l-8 4-8-4Z M4 7l8 4 8-4 M12 11v10 M8 5l8 4'},
                 {path: '/ventas', label: 'Ventas', icon: 'M3 4h2l3 12h11l2-9H6 M9 20h.01 M18 20h.01'},
+                {path: '/facturacion', label: 'Facturación', icon: 'M6 3h12v18l-3-2-3 2-3-2-3 2Z M9 7h6 M9 11h6 M9 15h3'},
                 {path: '/inventario', label: 'Inventario', icon: 'M4 3h16v18H4Z M4 9h16 M4 15h16 M10 6h4 M10 12h4 M10 18h4'}
             ] %}
             {% for item in operations %}
@@ -25,6 +26,7 @@
         <section id="admin-navigation" class="nav-group" aria-labelledby="administrative-heading" hidden>
             <h2 id="administrative-heading">Administrativos</h2>
             {% set administration = [
+                {path: '/empresa', label: 'Empresa', icon: 'M3 21h18 M5 21V3h14v18 M9 7h2 M13 7h2 M9 11h2 M13 11h2 M10 21v-6h4v6'},
                 {path: '/grupos', label: 'Grupos', icon: 'M4 4h6v6H4Z M14 4h6v6h-6Z M4 14h6v6H4Z M14 14h6v6h-6Z'},
                 {path: '/usuarios', label: 'Usuarios', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M19 15a4 4 0 0 1 3 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M17 3a4 4 0 0 1 0 8'},
                 {path: '/permisos', label: 'Permisos', icon: 'M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z M8 12l3 3 5-6'}

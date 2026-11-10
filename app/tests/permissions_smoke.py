@@ -63,7 +63,7 @@ class PermissionFlowTest(products_smoke.ProductApiTest):
         self.assertEqual(status, 200)
         self.assertIsNone(result['user']['group'])
         self.assertTrue(all(not value for actions in result['user']['permissions'].values() for value in actions.values()))
-        for module in ['products', 'sales', 'inventory', 'groups', 'users', 'permissions']:
+        for module in ['products', 'sales', 'billing', 'company', 'inventory', 'groups', 'users', 'permissions']:
             self.assertEqual(self.product_request(f'/api/modules/{module}/access')[0], 403)
         self.assertEqual(self.product_request()[0], 403)
 
@@ -79,6 +79,20 @@ class PermissionFlowTest(products_smoke.ProductApiTest):
         self.assertEqual(self.product_request()[0], 403)
         self.assertFalse(self.request('/api/me')[1]['user']['permissions']['products']['view'])
         self.assertEqual(self.request('/api/me')[1]['user']['username'], self.username)
+
+    def test_billing_access_can_be_granted_and_revoked(self):
+        self.assertEqual(self.product_request('/api/modules/billing/access')[0], 401)
+        self.prepare_permissions()
+        group = self.new_group()
+        self.assign(group)
+        self.assertEqual(self.product_request('/api/modules/billing/access')[0], 403)
+        self.grant(group, ['billing.view'])
+        status, result = self.product_request('/api/modules/billing/access')
+        self.assertEqual(status, 200)
+        self.assertEqual(result['actions'], {'view': True, 'create': False, 'update': False, 'delete': False})
+        self.assertEqual(self.product_request('/api/modules/sales/access')[0], 403)
+        self.grant(group, [])
+        self.assertEqual(self.product_request('/api/modules/billing/access')[0], 403)
 
     def test_permissions_each_write_action_is_independent(self):
         self.prepare_permissions()
@@ -174,8 +188,8 @@ class PermissionFlowTest(products_smoke.ProductApiTest):
         self.prepare_permissions()
         status, result = self.admin_api('/api/permissions')
         self.assertEqual(status, 200)
-        self.assertEqual(len(result['data']), 24)
-        self.assertEqual(len({item['key'] for item in result['data']}), 24)
+        self.assertEqual(len(result['data']), 32)
+        self.assertEqual(len({item['key'] for item in result['data']}), 32)
         self.assertEqual(self.admin_api('/api/groups', 'POST', {'name': 'NoCsrf'})[0], 403)
         self.assertEqual(self.admin_api('/api/permissions', 'POST', {})[0], 405)
         self.assertEqual(self.admin_api('/api/groups?page=0')[0], 400)

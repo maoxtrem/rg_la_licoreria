@@ -47,6 +47,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      printing:
+        condition: service_healthy
     stop_grace_period: 30s
     restart: always
 
@@ -111,4 +113,23 @@ services:
     volumes:
       - ./volumes/mercure/data:/data
       - ./volumes/mercure/config:/config
+    restart: always
+
+  printing:
+    build:
+      context: ./services/printing
+    environment:
+      PRINT_SPOOL_DIR: /data
+      PRINT_USB_VENDOR_ID: "2aaf"
+      PRINT_USB_PRODUCT_ID: "6015"
+    expose:
+      - "8080"
+    volumes:
+      - ./volumes/printing:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: always

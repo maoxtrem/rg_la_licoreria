@@ -1,6 +1,6 @@
 # RG La Licorería
 
-Symfony 7.4 skeleton con PHP 8.4 FPM, Nginx, MySQL 8.4, MinIO, Mercure y Redis con un worker de Symfony Messenger.
+Symfony 7.4 skeleton con PHP 8.4 FPM, Nginx, MySQL 8.4, MinIO, Mercure, Redis con un worker de Symfony Messenger y un receptor de impresión.
 
 ## Configuración local
 
@@ -21,13 +21,14 @@ encenderlo. `docker compose down` elimina los contenedores: después de ese coma
 es necesario ejecutar `up -d` para crearlos nuevamente.
 
 Los datos se guardan en carpetas del host relativas al Compose:
-`./volumes/mysql`, `./volumes/minio`, `./volumes/redis`, `./volumes/mercure/data` y
+`./volumes/mysql`, `./volumes/minio`, `./volumes/redis`, `./volumes/printing`, `./volumes/mercure/data` y
 `./volumes/mercure/config`. Se excluyen de Git y conservan los datos
 al detener los servicios.
 
 | Servicio | Dirección desde el host | Dirección desde PHP |
 | --- | --- | --- |
 | Symfony / Nginx | http://localhost | — |
+| Impresión | sin puerto publicado | http://printing:8080 |
 | Redis | sin puerto publicado | redis:6379 |
 | MySQL | 127.0.0.1:3306 | mysql:3306 |
 | MinIO S3 | http://localhost:9000 | http://minio:9000 |
@@ -38,10 +39,21 @@ Para acceder desde otra máquina, ajustar las URLs de `app/.env.local`.
 Las suscripciones a Mercure requieren un JWT válido; el proxy desactiva el
 buffering para permitir eventos SSE.
 
-Se parte del skeleton y se agrega Messenger con el transporte Redis para el
-worker. No incluye Doctrine, SDK S3 ni el bundle Mercure. Las variables de conexión quedan preparadas para integrarlos después.
+El monolito incluye autenticación y permisos por grupo, Productos y el carrito de
+Ventas. Los detalles de la API están en [app/README.md](app/README.md).
 El bucket indicado por `MINIO_BUCKET` todavía no se crea automáticamente.
-Sin rutas propias, Symfony muestra su respuesta inicial del skeleton (HTTP 404).
+
+El servicio `printing` recibe JSON en `POST /print`, lo guarda en
+`./volumes/printing` y responde `202` con estado `received`. Todavía no renderiza
+plantillas ni imprime esos trabajos. Incluye el perfil USB `2aaf:6015` de la
+SAT Q23T UE, consulta en `GET /printer` y un comando de impresión de prueba.
+El acceso USB se activa con `docker-compose.printing-usb.yml` después de
+compartir la impresora con Linux/WSL. Su URL interna se configura con `PRINT_SERVICE_URL` en
+`app/.env.local`. Contrato y comandos en
+[services/printing/README.md](services/printing/README.md).
+El worker será quien envíe las solicitudes a ese servicio desde la cola `async`;
+su arranque espera a que `printing` esté saludable. El manejador de mensajes de
+impresión todavía está pendiente de implementar.
 
 MinIO se compila desde el código oficial de la versión
 `RELEASE.2025-10-15T17-29-55Z`, porque las imágenes oficiales ya no se pudieron

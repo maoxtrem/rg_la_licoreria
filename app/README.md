@@ -37,12 +37,14 @@ Reglas:
 7. Cada petición consulta las asignaciones actuales en MySQL: revocar permisos
    o cambiar de grupo tiene efecto en la siguiente petición, sin otro login.
 
-El catálogo contiene 24 permisos: seis módulos por cuatro acciones.
+El catálogo contiene 32 permisos: ocho módulos por cuatro acciones.
 
 | Módulo | Clave | Acciones |
 | --- | --- | --- |
 | Productos | `products` | `view`, `create`, `update`, `delete` |
 | Ventas | `sales` | `view`, `create`, `update`, `delete` |
+| Empresa | `company` | `view`, `create`, `update`, `delete` |
+| Facturación | `billing` | `view`, `create`, `update`, `delete` |
 | Inventario | `inventory` | `view`, `create`, `update`, `delete` |
 | Grupos | `groups` | `view`, `create`, `update`, `delete` |
 | Usuarios | `users` | `view`, `create`, `update`, `delete` |
@@ -103,7 +105,7 @@ La sesión usa una cookie HttpOnly de Symfony y las solicitudes incluyen
 
 | Método | Ruta | Resultado |
 | --- | --- | --- |
-| GET | `/api/csrf` | Tokens `login`, `logout`, `products`, `sales`, `groups`, `permissions`, `users` |
+| GET | `/api/csrf` | Tokens `login`, `logout`, `products`, `sales`, `groups`, `permissions`, `users`, `company` |
 | POST | `/api/login` | Autentica con JSON y devuelve `user` |
 | GET | `/api/me` | Usuario, grupo y matriz efectiva de permisos |
 | POST | `/api/logout` | Invalida la sesión |
@@ -255,6 +257,56 @@ caducidad de sesión, fallos de conexión y vista móvil. El ejecutor crea un
 usuario/grupo temporales y los elimina al terminar; no cambia dependencias de
 la aplicación. La primera ejecución descarga el entorno de navegador.
 
+
+## Empresa
+
+Abrir `/empresa`, en **Administrativos**, para registrar o editar una única ficha
+con nombre, dirección, teléfono y NIT. Todos los campos son obligatorios. El NIT
+y el teléfono se guardan como texto, conservando ceros, guiones y prefijos.
+No se comprueba la validez fiscal del NIT. La pantalla usa el permiso
+`company.view`; registrar requiere además `company.create` y editar,
+`company.update`. El administrador tiene acceso completo. No se conceden
+permisos automáticamente a grupos existentes.
+
+| Método | Ruta | Resultado / permiso |
+| --- | --- | --- |
+| GET | `/api/company` | `data` con la ficha o `null` si falta / `company.view` |
+| POST | `/api/company` | Registrar (201); una segunda ficha devuelve 409 / `company.create` |
+| PUT | `/api/company` | Reemplazar los cuatro campos / `company.update` |
+| PATCH | `/api/company` | Actualizar solo los campos enviados / `company.update` |
+
+Las escrituras requieren `X-CSRF-Token` con el token `company` de `/api/csrf`.
+PUT/PATCH devuelven 404 si todavía no existe la ficha. No hay endpoint de borrado;
+`company.delete` queda reservado. Los campos desconocidos, vacíos, de tipo
+incorrecto o con caracteres de control se rechazan con 422 y errores por campo.
+Límites: nombre 180 caracteres, dirección 255, teléfono y NIT 40 cada uno.
+
+Ejemplo de alta:
+
+```json
+{"name":"La Licorería","address":"Calle 10 # 20-30","phone":"+57 3001234567","nit":"900123456-7"}
+```
+
+La migración `Version20261110070000` crea la ficha única y su catálogo de permisos.
+Los datos quedan listos para que Facturación los use más adelante; todavía no
+se incluyen automáticamente en tickets ni trabajos del microservicio.
+
+Pruebas: `python3 app/tests/company_smoke.py`. La prueba de escritura utiliza
+una ficha temporal y la elimina al terminar; si ya existe una empresa real,
+conserva sus datos y omite esa prueba.
+
+Prueba del formulario y revocación de acceso en Chromium:
+
+```bash
+BROWSER_TEST_FILE=company_browser.py python3 app/tests/run_products_browser.py
+```
+
+## Facturación
+
+`/facturacion` aparece en Operativos cuando el usuario tiene `billing.view`.
+Por ahora solo muestra la página «Próximamente»; no crea ni imprime facturas.
+El administrador tiene acceso automáticamente. Para los demás usuarios, asignar
+`billing.view` a su grupo. Las otras acciones del catálogo quedan reservadas.
 
 ## Ventas y lector de código de barras
 

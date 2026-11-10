@@ -1,0 +1,7 @@
+# Enable after attaching the printer to the Linux/WSL host.
+services:
+  printing:
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+    device_cgroup_rules:
+      - 'c 189:* rw'

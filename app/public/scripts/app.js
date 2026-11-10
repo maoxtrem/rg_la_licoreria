@@ -2,12 +2,15 @@ import { api } from './api.js';
 import { alertError } from './alerts.js';
 import { startProducts } from './products.js';
 import { startSales } from './sales.js';
+import { startCompany } from './company.js';
 
 const element = (id) => document.getElementById(id);
 const modules = {
     '/productos': { key: 'products', title: 'Productos', group: 'Operativos', description: 'Aquí encontrarás tu catálogo de productos.' },
     '/ventas': { key: 'sales', title: 'Ventas', group: 'Operativos', description: 'Aquí podrás gestionar las ventas de tu negocio.' },
+    '/facturacion': { key: 'billing', title: 'Facturación', group: 'Operativos', description: 'Aquí podrás gestionar la facturación de tu negocio.' },
     '/inventario': { key: 'inventory', title: 'Inventario', group: 'Operativos', description: 'Aquí podrás consultar y gestionar tus existencias.' },
+    '/empresa': { key: 'company', title: 'Empresa', group: 'Administrativos', description: 'Datos de la empresa para las facturas.' },
     '/grupos': { key: 'groups', title: 'Grupos', group: 'Administrativos', description: 'Aquí podrás organizar los grupos de trabajo.' },
     '/usuarios': { key: 'users', title: 'Usuarios', group: 'Administrativos', description: 'Aquí podrás gestionar las cuentas del sistema.' },
     '/permisos': { key: 'permissions', title: 'Permisos', group: 'Administrativos', description: 'Aquí podrás administrar los permisos de acceso.' },
@@ -73,17 +76,19 @@ async function initialize() {
                 return;
             }
             if (!access.response.ok) throw new Error('No se pudo consultar el acceso.');
-            if (module.key === 'products' || module.key === 'sales') {
+            if (module.key === 'products' || module.key === 'sales' || module.key === 'company') {
                 const view = `${module.key}-view`;
                 showView(view);
-                const start = module.key === 'products' ? startProducts : startSales;
+                const start = { products: startProducts, sales: startSales, company: startCompany }[module.key];
                 await start({
                     actions: access.data.actions,
                     onAccessLost: () => {
                         element(view).hidden = true;
                         const link = document.querySelector(`[data-nav][href="${location.pathname}"]`);
                         if (link) link.hidden = true;
-                        element('operational-navigation').hidden = ![...element('operational-navigation').querySelectorAll('[data-nav]')].some((item) => !item.hidden);
+                        for (const id of ['operational-navigation', 'admin-navigation']) {
+                            element(id).hidden = ![...element(id).querySelectorAll('[data-nav]')].some((item) => !item.hidden);
+                        }
                         showView('access-denied-view');
                     },
                 });

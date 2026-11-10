@@ -1,0 +1,23 @@
+<section id="company-view" class="dashboard" hidden>
+    <p class="eyebrow">Administrativos</p>
+    <div class="page-heading"><div><h1>Empresa</h1><p class="muted">Datos de la empresa que se usarán en las facturas.</p></div></div>
+    <div class="card module-card">
+        <p id="company-status" class="muted" role="status">Cargando datos…</p>
+        <form id="company-form" hidden>
+            <fieldset id="company-fields" class="form-fields">
+                {% for field in [
+                    {key: 'name', label: 'Nombre', limit: 180, type: 'text'},
+                    {key: 'address', label: 'Dirección', limit: 255, type: 'text'},
+                    {key: 'phone', label: 'Teléfono', limit: 40, type: 'tel'},
+                    {key: 'nit', label: 'NIT', limit: 40, type: 'text'}
+                ] %}
+                    <label for="company-{{ field.key }}">{{ field.label }}</label>
+                    <input id="company-{{ field.key }}" name="{{ field.key }}" type="{{ field.type }}" maxlength="{{ field.limit }}" required aria-describedby="company-{{ field.key }}-error">
+                    <p id="company-{{ field.key }}-error" class="field-error" hidden></p>
+                {% endfor %}
+            </fieldset>
+            <div class="dialog-actions"><button id="company-save" class="button" type="submit" hidden>Guardar datos</button></div>
+        </form>
+        <button id="company-refresh" class="button-secondary" type="button">Recargar datos</button>
+    </div>
+</section>
