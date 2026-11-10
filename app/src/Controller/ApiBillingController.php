@@ -31,6 +31,17 @@ class ApiBillingController extends AbstractController
             'pagination' => ['page' => $pagination['page'], 'limit' => $pagination['limit'], 'total' => $repository->count($criteria)]], headers: ['Cache-Control' => 'no-store']);
     }
 
+    #[Route('/product', name: 'api_billing_product', defaults: ['_permission_action' => 'update'], methods: ['GET'])]
+    public function product(Request $request): JsonResponse
+    {
+        $barcode = $request->query->get('barcode');
+        if (!is_string($barcode) || trim($barcode) === '' || mb_strlen($barcode) > 100) throw new CartException(422, 'Incluye un código de barras válido.');
+        $product = $this->em->getRepository(\App\Entity\Product::class)->findOneBy(['barcode' => trim($barcode)])
+            ?? throw new CartException(404, 'No encontramos un producto con ese código de barras.');
+        return $this->json(['data' => ['product_id' => $product->getId(), 'name' => $product->getName(), 'barcode' => $product->getBarcode(),
+            'unit_price' => $product->getSalePrice(), 'quantity' => 1, 'subtotal' => $product->getSalePrice()]], headers: ['Cache-Control' => 'no-store']);
+    }
+
     #[Route('/{id}', name: 'api_billing_show', requirements: ['id' => '\d+'], methods: ['GET'])]
     public function show(int $id): JsonResponse
     {

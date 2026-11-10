@@ -5,10 +5,12 @@ import math
 import os
 from pathlib import Path
 import tempfile
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
 from uuid import uuid4
 from printer import SatPrinter
+from invoice import dispatch_invoice
 
 LOGGER = logging.getLogger('printing')
 MAX_BODY = 1024 * 1024
@@ -32,6 +34,7 @@ class PrintingServer(ThreadingHTTPServer):
         self.spool_directory = Path(spool_directory)
         self.spool_directory.mkdir(parents=True, exist_ok=True)
         self.printer = SatPrinter()
+        self.invoice_lock = threading.Lock()
         super().__init__(address, PrintingHandler)
 
 
@@ -99,6 +102,18 @@ class PrintingHandler(BaseHTTPRequestHandler):
         template = payload.get('template')
         if template is not None and (not isinstance(template, str) or not template.strip() or len(template) > 100):
             self.respond(422, {'error': 'template debe ser un nombre de entre 1 y 100 caracteres.'})
+            return
+        if template == 'invoice':
+            try:
+                status, result = dispatch_invoice(self.server, payload['data'])
+            except (ValueError, KeyError, TypeError, OverflowError, UnicodeError):
+                self.respond(422, {'error': 'Los datos de la factura no son válidos.'})
+                return
+            except OSError:
+                LOGGER.exception('Could not persist an invoice print job')
+                self.respond(503, {'error': 'No se pudo guardar el estado de impresión.'})
+                return
+            self.respond(status, result)
             return
         job_id = str(uuid4())
         job = {'id': job_id, 'status': 'received', 'created_at': datetime.now(timezone.utc).isoformat(),

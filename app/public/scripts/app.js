@@ -3,6 +3,7 @@ import { alertError } from './alerts.js';
 import { startProducts } from './products.js';
 import { startSales } from './sales.js';
 import { startCompany } from './company.js';
+import { startBilling } from './billing.js';
 
 const element = (id) => document.getElementById(id);
 const modules = {
@@ -76,10 +77,10 @@ async function initialize() {
                 return;
             }
             if (!access.response.ok) throw new Error('No se pudo consultar el acceso.');
-            if (module.key === 'products' || module.key === 'sales' || module.key === 'company') {
+            if (module.key === 'products' || module.key === 'sales' || module.key === 'company' || module.key === 'billing') {
                 const view = `${module.key}-view`;
                 showView(view);
-                const start = { products: startProducts, sales: startSales, company: startCompany }[module.key];
+                const start = { products: startProducts, sales: startSales, company: startCompany, billing: startBilling }[module.key];
                 await start({
                     actions: access.data.actions,
                     onAccessLost: () => {

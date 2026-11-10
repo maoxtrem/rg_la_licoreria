@@ -4,6 +4,6 @@ WORKDIR /service
 RUN apt-get update && apt-get install -y --no-install-recommends libusb-1.0-0 && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY server.py printer.py tests.py ./
+COPY server.py printer.py invoice.py tests.py ./
 EXPOSE 8080
 CMD ["python", "server.py"]

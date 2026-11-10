@@ -64,3 +64,12 @@ export async function confirmCartClear() {
     }));
     return result.isConfirmed;
 }
+
+export async function confirmInvoicePayment() {
+    const result = await Swal.fire(options({
+        icon: 'question', title: '¿Confirmar el pago y facturar?',
+        text: 'Confirma que recibiste el pago. La factura quedará cerrada y no se podrá editar.',
+        showCancelButton: true, confirmButtonText: 'Confirmar pago', focusCancel: true,
+    }));
+    return result.isConfirmed;
+}

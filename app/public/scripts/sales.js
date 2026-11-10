@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { alertError, alertPermission, confirmCartClear } from './alerts.js';
+import { alertError, alertPermission, confirmCartClear, confirmInvoicePayment, notifySuccess } from './alerts.js';
 
 const element = (id) => document.getElementById(id);
 // Formatting only: avoid floating point even for unusually large cart totals.
@@ -26,6 +26,10 @@ export async function startSales({ actions, onAccessLost }) {
         input.disabled = !ready || !permissions.create || lost;
         element('sales-scan-button').disabled = input.disabled;
         element('sales-refresh').disabled = pending > 0;
+        for (const id of ['sales-pay', 'sales-pending']) {
+            element(id).hidden = !permissions.create;
+            element(id).disabled = !ready || lost || pending > 0 || !cart.items.length;
+        }
         element('sales-clear').hidden = !permissions.delete;
         element('sales-clear').disabled = pending > 0 || cart.items.length === 0;
         element('sales-readonly').hidden = permissions.create;
@@ -184,6 +188,26 @@ export async function startSales({ actions, onAccessLost }) {
         enqueue(() => mutate('update', `/api/sales/cart/items/${id}`, 'PATCH', { quantity }));
     }
 
+    async function checkout(status) {
+        if (pending || !cart.items.length) return;
+        if (status === 'paid' && !await confirmInvoicePayment()) return;
+        await enqueue(async () => {
+            if (!await authorize('create')) return;
+            const csrf = await api('/api/csrf');
+            if (!csrf.response.ok) throw new Error('No se pudo preparar el registro.');
+            const result = await api('/api/sales/cart/checkout', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.data.sales },
+                body: JSON.stringify({ status, checkout_key: cart.checkout_key }),
+            });
+            if (expired(result.response)) return;
+            if (!result.response.ok) { await alertError(result.data?.error ?? 'No se pudo guardar la venta.'); return; }
+            cart = result.data.cart;
+            render();
+            await notifySuccess(`${result.data.data.number}: ${result.data.data.status === 'paid' ? 'facturada' : 'pendiente de pago'}. Disponible en Facturación.`);
+        });
+    }
+    element('sales-pay').addEventListener('click', () => checkout('paid'));
+    element('sales-pending').addEventListener('click', () => checkout('pending'));
     element('sales-scan-form').addEventListener('submit', (event) => {
         event.preventDefault();
         const barcode = input.value.trim();

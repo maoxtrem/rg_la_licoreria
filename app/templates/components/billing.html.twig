@@ -1,0 +1,27 @@
+<section id="billing-view" class="dashboard" hidden>
+    <p class="eyebrow">Operativos</p>
+    <div class="page-heading"><div><h1>Facturación</h1><p class="muted">Cobra los pendientes y consulta tus facturas.</p></div></div>
+    <div class="catalog-panel">
+        <div class="catalog-toolbar">
+            <label for="billing-filter">Estado <select id="billing-filter"><option value="">Todos</option><option value="pending">Pendiente de pago</option><option value="paid">Facturada</option></select></label>
+            <button id="billing-refresh" class="button-secondary" type="button">Recargar datos</button>
+        </div>
+        <p id="billing-status" class="catalog-state" role="status">Cargando registros…</p>
+        <div class="table-scroll"><table class="products-table"><caption class="sr-only">Registros de facturación</caption><thead><tr><th>Referencia</th><th>Fecha</th><th>Estado</th><th>Total</th><th>Acciones</th></tr></thead><tbody id="billing-rows"></tbody></table></div>
+        <div class="catalog-pagination"><button id="billing-previous" class="button-secondary" type="button">Anterior</button><span id="billing-page"></span><button id="billing-next" class="button-secondary" type="button">Siguiente</button></div>
+    </div>
+    <dialog id="billing-dialog" class="app-dialog" aria-labelledby="billing-title">
+        <div class="dialog-heading"><h2 id="billing-title">Registro</h2><button id="billing-close" class="dialog-close" type="button" aria-label="Cerrar detalle">×</button></div>
+        <p id="billing-detail-status" class="muted"></p>
+        <div id="billing-company" class="muted"></div>
+        <div id="billing-items"></div>
+        <form id="billing-add-form" class="scan-input-row" hidden><label for="billing-barcode" class="sr-only">Código de barras</label><input id="billing-barcode" maxlength="100" placeholder="Agregar por código de barras" required><button class="button-secondary" type="submit">Agregar</button></form>
+        <p id="billing-total" class="sale-total"></p>
+        <p id="billing-notice" class="field-help" role="status"></p>
+        <div class="dialog-actions">
+            <button id="billing-save" class="button-secondary" type="button" hidden>Guardar cambios</button>
+            <button id="billing-pay" class="button" type="button" hidden>Pagar y facturar</button>
+            <button id="billing-print" class="button" type="button" hidden>Imprimir</button>
+        </div>
+    </dialog>
+</section>
