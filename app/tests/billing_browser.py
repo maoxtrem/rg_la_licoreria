@@ -1,5 +1,7 @@
 """Ventas -> pendiente editable -> cobro -> factura de solo impresión."""
 import os
+import json
+import base64
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -25,9 +27,20 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
 
     def scan_product(self):
         product = self.create_api(name='Producto factura prueba')
+        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+        csrf = self.admin.get('/api/csrf').json()['products']
+        response = self.admin.post(f'/api/products/{product["id"]}', multipart={
+            'data': json.dumps({key: product[key] for key in ['name', 'barcode', 'sale_price', 'cost_price']}),
+            'image': {'name': 'producto.png', 'mimeType': 'image/png', 'buffer': png},
+        }, headers={'X-CSRF-Token': csrf})
+        self.assertEqual(response.status, 200, response.text())
         self.page.locator('#sales-barcode').fill(product['barcode'])
         self.page.locator('#sales-barcode').press('Enter')
         expect(self.page.locator('#sales-summary-quantity')).to_have_text('1')
+        image = self.page.locator(f'#sales-rows tr[data-product-id="{product["id"]}"] img')
+        expect(image).to_be_visible()
+        expect(image).to_have_attribute('alt', product['name'])
+        expect(image).to_have_js_property('naturalWidth', 1)
         return product
 
     def test_pending_edit_pay_and_print_action(self):

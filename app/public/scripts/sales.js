@@ -43,6 +43,16 @@ export async function startSales({ actions, onAccessLost }) {
         const rows = cart.items.map((item) => {
             const row = document.createElement('tr');
             row.dataset.productId = String(item.product_id);
+            const imageCell = document.createElement('td');
+            const noImage = () => { imageCell.textContent = 'Sin imagen'; imageCell.className = 'muted small-text'; };
+            if (item.image_url) {
+                const image = document.createElement('img');
+                image.src = item.image_url; image.alt = item.name;
+                image.className = 'product-thumbnail'; image.loading = 'lazy';
+                image.width = 56; image.height = 56;
+                image.addEventListener('error', noImage, { once: true });
+                imageCell.append(image);
+            } else noImage();
             const product = document.createElement('td');
             product.className = 'product-name-cell';
             const name = document.createElement('strong');
@@ -82,7 +92,7 @@ export async function startSales({ actions, onAccessLost }) {
             const subtotal = document.createElement('td');
             subtotal.className = 'price-cell';
             subtotal.textContent = money(item.subtotal);
-            row.append(product, price, quantity, subtotal);
+            row.append(imageCell, product, price, quantity, subtotal);
             if (permissions.delete) {
                 const cell = document.createElement('td');
                 cell.className = 'row-actions';

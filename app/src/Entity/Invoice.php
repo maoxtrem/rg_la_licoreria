@@ -36,7 +36,11 @@ class Invoice
     {
         $this->checkoutKey = $checkoutKey;
         $this->createdBy = $createdBy;
-        $this->items = $cart['items'];
+        // Store sale data, never live catalog URLs or an ORM relation to Product.
+        // product_id is only a historical reference for editing pending quantities.
+        $this->items = array_map(static fn (array $item) => array_intersect_key($item, array_flip([
+            'product_id', 'name', 'barcode', 'unit_price', 'quantity', 'subtotal',
+        ])), $cart['items']);
         $this->total = $cart['total'];
         $this->createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }

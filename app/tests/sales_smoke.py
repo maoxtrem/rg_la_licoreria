@@ -1,8 +1,10 @@
 """Carrito de ventas y regresión de permisos: python3 app/tests/sales_smoke.py."""
 import secrets
+import base64
 import unittest
 
 import permissions_smoke
+import api_auth_smoke
 
 
 class SalesApiTest(permissions_smoke.PermissionFlowTest):
@@ -43,6 +45,26 @@ class SalesApiTest(permissions_smoke.PermissionFlowTest):
         self.assertEqual(lines[first['id']]['barcode'], first['barcode'])
         self.assertEqual(self.sales()[1]['data']['total'], '0.50')
         self.assertEqual(self.product_request('/api/products')[0], 403)
+
+    def test_sales_product_image_with_sales_permissions_only(self):
+        group = self.prepare_sales()
+        product = self.sell_product()
+        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+        self.assertIsNone(self.scan(product)[1]['data']['items'][0]['image_url'])
+        urls = []
+        for _ in range(2):
+            with self.admin_session():
+                status, result = self.image_request(f'/api/products/{product["id"]}', {'name': product['name'], 'barcode': product['barcode'], 'sale_price': product['sale_price'], 'cost_price': product['cost_price']}, png, self.tokens()['products'])
+                self.assertEqual(status, 200, result)
+            url = self.sales()[1]['data']['items'][0]['image_url']
+            urls.append(url)
+            with self.client.open(api_auth_smoke.BASE_URL + url) as response:
+                self.assertEqual(response.headers['Content-Type'], 'image/png')
+                self.assertEqual(response.read(), png)
+            self.assertEqual(self.product_request('/api/products')[0], 403)
+        self.assertNotEqual(*urls)
+        self.grant(group, [])
+        self.assertEqual(self.product_request(urls[-1])[0], 403)
 
     def test_sales_cart_preserves_scan_order(self):
         self.prepare_sales()

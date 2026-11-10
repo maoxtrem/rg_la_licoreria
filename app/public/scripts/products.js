@@ -87,6 +87,8 @@ export async function startProducts({ actions, onAccessLost }) {
                 image.src = product.image_url;
                 image.alt = product.name;
                 image.className = 'product-thumbnail';
+                image.width = 56;
+                image.height = 56;
                 image.loading = 'lazy';
                 imageCell.append(image);
             } else {

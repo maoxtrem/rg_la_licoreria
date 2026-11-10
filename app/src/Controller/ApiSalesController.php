@@ -3,10 +3,14 @@
 namespace App\Controller;
 
 use App\Http\ApiInput;
+use App\Entity\Product;
+use App\Storage\ProductImages;
+use Doctrine\ORM\EntityManagerInterface;
 use App\Sales\Cart;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/api/sales/cart', defaults: ['_format' => 'json', '_permission_module' => 'sales'])]
@@ -30,6 +34,17 @@ class ApiSalesController extends AbstractController
             return $this->json(['error' => 'Incluye únicamente barcode como texto de entre 1 y 100 caracteres.'], 422);
         }
         return $this->result($this->cart->scan($request->getSession(), $this->getUser(), trim($data['barcode'])));
+    }
+
+    #[Route('/products/{id}/image', name: 'api_sales_product_image', defaults: ['_permission_action' => 'view'], requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function productImage(int $id, EntityManagerInterface $em, ProductImages $images): Response
+    {
+        $key = $em->find(Product::class, $id)?->getImageKey() ?? throw $this->createNotFoundException();
+        $image = $images->read($key);
+        return new Response($image['body'], 200, [
+            'Content-Type' => $image['type'], 'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     #[Route('/items/{id}', name: 'api_sales_quantity', requirements: ['id' => '\d+'], methods: ['PATCH'])]

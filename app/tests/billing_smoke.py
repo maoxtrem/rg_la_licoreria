@@ -137,6 +137,35 @@ foreach (json_decode(getenv('SMOKE_INVOICE_DATES'), true) as $id => $date) {
         for query in ['from=2024-02-30', 'to=invalid', 'from=2024-1-2', 'from=2024-01-03&to=2024-01-02']:
             self.assertEqual(self.billing('?' + query)[0], 422)
 
+    def test_billing_snapshot_survives_catalog_changes_and_deletion(self):
+        self.prepare_billing()
+        product = self.sell_product('12.35')
+        pending, _ = self.checkout(product)
+        paid, _ = self.checkout(product, 'paid')
+        with self.admin_session():
+            status, result = self.product_request(f'/api/products/{product["id"]}', 'PATCH', {
+                'name': 'Producto renombrado', 'barcode': 'changed-' + secrets.token_hex(8), 'sale_price': '99.99',
+            }, self.tokens()['products'])
+            self.assertEqual(status, 200, result)
+        for invoice in [pending, paid]:
+            self.assertNotIn('image_url', invoice['items'][0])
+            self.assertEqual(self.billing(f'/{invoice["id"]}')[1]['data'], invoice)
+        with self.admin_session():
+            self.assertEqual(self.product_request(f'/api/products/{product["id"]}', 'DELETE', csrf=self.tokens()['products'])[0], 204)
+        for invoice in [pending, paid]:
+            self.assertEqual(self.billing(f'/{invoice["id"]}')[1]['data'], invoice)
+        status, edited = self.billing(f'/{pending["id"]}', 'PATCH', {
+            'revision': pending['revision'], 'items': [{'product_id': product['id'], 'quantity': 2}],
+        })
+        self.assertEqual(status, 200, edited)
+        self.assertEqual(edited['data']['items'][0]['name'], product['name'])
+        self.assertEqual(edited['data']['items'][0]['barcode'], product['barcode'])
+        self.assertEqual(edited['data']['items'][0]['unit_price'], '12.35')
+        self.assertEqual(edited['data']['total'], '24.70')
+        status, finalized = self.billing(f'/{pending["id"]}/pay', 'POST', {'revision': edited['data']['revision']})
+        self.assertEqual(status, 200, finalized)
+        self.assertEqual(finalized['data']['items'], edited['data']['items'])
+
     def test_billing_permissions_and_invalid_edit(self):
         group = self.prepare_billing()
         product = self.sell_product()

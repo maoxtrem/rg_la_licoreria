@@ -6,6 +6,7 @@ use App\Entity\Product;
 use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /** A session-owned draft; product prices always come from the database. */
 class Cart
@@ -13,7 +14,7 @@ class Cart
     private const MAX_QUANTITY = 9999;
     private const MAX_LINES = 100;
 
-    public function __construct(private readonly EntityManagerInterface $entityManager)
+    public function __construct(private readonly EntityManagerInterface $entityManager, private readonly UrlGeneratorInterface $urls)
     {
     }
 
@@ -38,6 +39,7 @@ class Cart
                 $total += $subtotal;
                 $units += $quantity;
                 $items[] = ['product_id' => $product->getId(), 'name' => $product->getName(),
+                    'image_url' => $product->getImageKey() ? $this->urls->generate('api_sales_product_image', ['id' => $product->getId(), 'v' => basename($product->getImageKey())]) : null,
                     'barcode' => $product->getBarcode(), 'unit_price' => self::money($cents),
                     'quantity' => $quantity, 'subtotal' => self::money($subtotal)];
             }
