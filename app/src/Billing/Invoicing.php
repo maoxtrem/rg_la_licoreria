@@ -18,10 +18,11 @@ class Invoicing
 
     public function checkout(SessionInterface $session, User $user, array $data): Invoice
     {
-        if (count($data) !== 2 || !isset($data['status'], $data['checkout_key'])
+        $expected = ($data['status'] ?? null) === 'paid' ? $this->paymentFields($data, ['status', 'checkout_key']) : ['status', 'checkout_key'];
+        if (count($data) !== count($expected) || array_diff(array_keys($data), $expected) || !isset($data['status'], $data['checkout_key'])
             || !in_array($data['status'], ['pending', 'paid'], true)
             || !is_string($data['checkout_key']) || !preg_match('/^[a-f0-9]{32}$/D', $data['checkout_key'])) {
-            throw new CartException(422, 'Incluye status (pending o paid) y checkout_key del carrito.');
+            throw new CartException(422, 'Incluye status (pending o paid), checkout_key y, al pagar, cash_received y transfer_received con dos decimales.');
         }
         $existing = $this->em->getRepository(Invoice::class)->findOneBy(['checkoutKey' => $data['checkout_key']]);
         if ($existing) {
@@ -34,7 +35,7 @@ class Invoicing
         $company = $data['status'] === 'paid' ? $this->company() : null;
         $invoice = $this->em->wrapInTransaction(function () use ($data, $user, $cart, $company): Invoice {
             $invoice = new Invoice($data['checkout_key'], $user->getId(), $cart);
-            if ($company) $invoice->pay($company);
+            if ($company) $invoice->pay($company, $data['cash_received'] ?? null, $data['payment_method'] ?? 'cash', $data['transfer_received'] ?? null);
             $this->em->persist($invoice);
             return $invoice;
         });
@@ -45,10 +46,10 @@ class Invoicing
 
     public function change(int $id, array $data, bool $pay): Invoice
     {
-        $expected = $pay ? ['revision'] : ['revision', 'items'];
+        $expected = $pay ? $this->paymentFields($data, ['revision']) : ['revision', 'items'];
         if (array_diff(array_keys($data), $expected) || count($data) !== count($expected)
             || !isset($data['revision']) || !is_int($data['revision']) || $data['revision'] < 1) {
-            throw new CartException(422, $pay ? 'Incluye revision como entero.' : 'Incluye revision e items con product_id y quantity.');
+            throw new CartException(422, $pay ? 'Incluye revision como entero, cash_received y transfer_received con dos decimales.' : 'Incluye revision e items con product_id y quantity.');
         }
         return $this->em->wrapInTransaction(function () use ($id, $data, $pay): Invoice {
             $invoice = $this->em->find(Invoice::class, $id, LockMode::PESSIMISTIC_WRITE)
@@ -56,13 +57,30 @@ class Invoicing
             if ($invoice->getStatus() !== 'pending') throw new CartException(409, 'La factura ya está facturada. Solo se puede imprimir.');
             if ($invoice->getRevision() !== $data['revision']) throw new CartException(409, 'El registro cambió en otra ventana. Recarga sus datos.');
             if ($pay) {
-                $invoice->pay($this->company());
+                $invoice->pay($this->company(), $data['cash_received'] ?? null, $data['payment_method'] ?? 'cash', $data['transfer_received'] ?? null);
             } else {
                 [$items, $total] = $this->items($data['items'], $invoice->getItems());
                 $invoice->replaceItems($items, $total);
             }
             return $invoice;
         });
+    }
+
+    private function paymentFields(array $data, array $base): array
+    {
+        if (array_key_exists('transfer_received', $data)) {
+            if (!is_string($data['transfer_received']) || !preg_match('/^\d{1,15}\.\d{2}$/D', $data['transfer_received'])) {
+                throw new CartException(422, 'Incluye transferencia como importe con dos decimales.');
+            }
+            return [...$base, 'cash_received', 'transfer_received'];
+        }
+        $method = $data['payment_method'] ?? 'cash';
+        if (array_key_exists('payment_method', $data) && !in_array($data['payment_method'], ['cash', 'transfer'], true)) {
+            throw new CartException(422, 'Selecciona efectivo o transferencia como método de pago.');
+        }
+        if (array_key_exists('payment_method', $data)) $base[] = 'payment_method';
+        if ($method === 'cash') $base[] = 'cash_received';
+        return $base;
     }
 
     private function company(): array

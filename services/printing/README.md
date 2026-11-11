@@ -1,5 +1,21 @@
 # Receptor de impresión
 
+Al confirmar un pago en Ventas o Facturación, el backend envía automáticamente
+la factura guardada a la cola de impresión. Las ventas pendientes se conservan
+sin imprimir y el botón Imprimir sigue disponible para reimpresiones. La
+impresión automática usa una referencia estable por factura para que repetir el
+checkout no produzca dos tickets. Si no se puede encolar, el pago queda guardado
+y la interfaz indica que se debe solicitar la impresión desde Facturación.
+
+El cobro presenta efectivo (inicialmente el total) y transferencia (inicialmente
+cero). Al modificar la transferencia se ajusta el efectivo al saldo restante;
+el cajero puede modificar el efectivo recibido para calcular cambio. Las facturas
+guardan `cash_received`, `transfer_received` y `change_due`, como cadenas con dos
+decimales. El servidor calcula el cambio y `payment_method`: `cash`, `transfer`
+o `mixed`. La transferencia no puede superar el total y la suma recibida debe
+cubrirlo. El desglose aparece en el detalle y en el ticket. La plantilla `invoice`
+valida los importes y conserva compatibilidad con facturas históricas.
+
 ## Apertura de caja al imprimir facturas
 
 Los trabajos con `template: "invoice"` imprimen la factura pagada, cortan el
@@ -115,6 +131,29 @@ El montaje requiere que `/dev/bus/usb` exista en el host del daemon Docker.
 Después de reiniciar WSL o desconectar el USB, puede ser necesario repetir
 `usbipd attach`. Mientras se use USB, mantener los dos archivos `-f` al ejecutar
 `up` para no quitar la configuración del contenedor.
+
+### Recuperación tras apagar el equipo o la impresora
+
+Para instalar la reconexión automática, ejecutar en PowerShell con el usuario
+que utiliza WSL, desde la raíz de este repositorio:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\docker\printing\Install-PrinterRecovery.ps1
+```
+
+El instalador copia el monitor a `%LOCALAPPDATA%\RGLaLicoreria` y registra la
+tarea `RG La Licoreria - Recuperar impresora USB`, que arranca al iniciar sesión
+y se inicia también al instalarla. Cada 10 segundos comprueba únicamente el
+dispositivo `2aaf:6015` y lo adjunta a `Ubuntu-22.04` si está presente y no está
+adjuntado. La impresora debe haberse compartido previamente con `usbipd bind`.
+Si cambia la distribución WSL, ajustar `Watch-Printer.ps1` y reinstalar.
+Para retirarla, detener y eliminar esa tarea desde el Programador de tareas.
+
+El receptor ejecuta cada consulta y envío USB en un proceso corto, para que
+libusb descubra la dirección actual incluso si el contenedor no recibió el
+evento de reconexión. No hace falta reiniciar el servicio tras reconectar.
+Los envíos fallidos o inciertos no se repiten automáticamente; revisar el
+papel antes de solicitar la reimpresión desde Facturación.
 
 Consultar el dispositivo dentro del servicio:
 

@@ -25,6 +25,14 @@
         <p id="billing-detail-date" class="muted"></p>
         <div class="table-scroll"><table class="products-table"><caption class="sr-only">Productos de la factura</caption><thead><tr><th scope="col">Producto</th><th scope="col">Cantidad</th><th scope="col" class="price-cell">Precio unitario</th><th scope="col" class="price-cell">Subtotal</th></tr></thead><tbody id="billing-detail-rows"></tbody></table></div>
         <div class="sale-total"><span>Total COP</span><strong id="billing-detail-total"></strong></div>
+        <div id="billing-detail-payment" hidden>
+            <p>Método de pago: <strong id="billing-detail-method"></strong></p>
+            <p>Transferencia COP: <strong id="billing-detail-transfer"></strong></p>
+            <div id="billing-detail-cash">
+            <p>Dinero recibido COP: <strong id="billing-detail-received"></strong></p>
+            <p>Cambio a devolver COP: <strong id="billing-detail-change"></strong></p>
+            </div>
+        </div>
         <div class="dialog-actions"><button id="billing-detail-done" class="button-secondary" type="button">Cerrar</button></div>
     </dialog>
     <dialog id="billing-dialog" class="app-dialog billing-dialog" aria-labelledby="billing-dialog-title">

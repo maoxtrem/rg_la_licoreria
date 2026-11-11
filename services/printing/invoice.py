@@ -37,6 +37,13 @@ def money(value):
     return '$' + f'{value:,.2f}'.replace(',', '_').replace('.', ',').replace('_', '.')
 
 
+def payment_row(label, value):
+    formatted = money(value)
+    if len(label) + len(formatted) + 1 > WIDTH:
+        return [label, formatted.rjust(WIDTH)]
+    return [label + formatted.rjust(WIDTH - len(label))]
+
+
 def render_invoice(data):
     job_id = data.get('print_job_id')
     invoice = data.get('invoice')
@@ -74,7 +81,46 @@ def render_invoice(data):
             lines.append(detail + value.rjust(WIDTH - len(detail)))
     if total != amount(invoice.get('total')):
         raise ValueError('Total no válido.')
-    lines.extend(['-' * WIDTH, 'TOTAL COP', money(total).rjust(WIDTH), '-' * WIDTH, 'Gracias por su compra'.center(WIDTH)])
+    lines.extend(['-' * WIDTH, *payment_row('TOTAL COP', total), '-' * WIDTH])
+    received, change = invoice.get('cash_received'), invoice.get('change_due')
+    method = invoice.get('payment_method')
+    transferred = invoice.get('transfer_received')
+    if method is not None and method not in ('cash', 'transfer', 'mixed'):
+        raise ValueError('Metodo de pago no valido.')
+    if transferred is not None:
+        transferred = amount(transferred)
+        # Older transfer-only invoices did not store cash/change values.
+        received = Decimal('0') if method == 'transfer' and received is None else amount(received)
+        change = Decimal('0') if method == 'transfer' and change is None else amount(change)
+        expected_method = 'cash' if transferred == 0 else ('transfer' if received == 0 else 'mixed')
+        if method != expected_method or transferred > total or received + transferred - total != change:
+            raise ValueError('Los importes de efectivo y transferencia no coinciden con la factura.')
+        lines.append('PAGO: ' + {'cash': 'EFECTIVO', 'transfer': 'TRANSFERENCIA', 'mixed': 'EFECTIVO Y TRANSFERENCIA'}[method])
+        if method != 'transfer':
+            lines.extend(payment_row('EFECTIVO RECIBIDO COP', received))
+        lines.extend(payment_row('TRANSFERENCIA COP', transferred))
+        if method != 'transfer':
+            lines.extend(payment_row('CAMBIO COP', change))
+    else:
+        # Preserve compatibility with already queued and historical invoices.
+        if method == 'mixed':
+            raise ValueError('Falta el importe transferido.')
+        if method == 'transfer':
+            if received is not None or change is not None:
+                raise ValueError('Una transferencia no recibe efectivo ni genera cambio.')
+            lines.append('PAGO: TRANSFERENCIA')
+            lines.extend(payment_row('TRANSFERENCIA COP', total))
+        elif method == 'cash':
+            if received is None or change is None:
+                raise ValueError('Faltan los datos de efectivo.')
+            lines.append('PAGO: EFECTIVO')
+        if received is not None or change is not None:
+            received, change = amount(received), amount(change)
+            if received < total or received - total != change:
+                raise ValueError('Dinero recibido o cambio no válido.')
+            lines.extend(payment_row('EFECTIVO RECIBIDO COP', received))
+            lines.extend(payment_row('CAMBIO COP', change))
+    lines.extend(['-' * WIDTH, 'Gracias por su compra'.center(WIDTH)])
     # Queue the pulse after printing and cutting, in the same deduplicated job.
     return job_id, b'\x1b@' + ('\n'.join(lines) + '\n\n\n\n').encode('ascii') + b'\x1dV\x01' + OPEN_CASH_DRAWER
 

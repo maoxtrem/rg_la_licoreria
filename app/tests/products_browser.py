@@ -12,7 +12,7 @@ import unittest
 
 from playwright.sync_api import expect, sync_playwright
 
-BASE = 'http://localhost'
+BASE = os.environ.get('SMOKE_BASE_URL', 'http://localhost')
 
 
 class ProductsBrowserTest(unittest.TestCase):

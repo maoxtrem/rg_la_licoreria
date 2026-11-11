@@ -22,7 +22,8 @@ def main():
     stream = 'printing_smoke_' + suffix
     invoice = {'id': 1, 'number': 'F-PRUEBA', 'status': 'paid', 'paid_at': '2026-11-10T07:00:00+00:00',
                'company': {'name': 'Empresa de prueba', 'nit': '00123-4', 'address': 'Calle prueba', 'phone': '0012345'},
-               'items': [{'product_id': 1, 'name': 'Producto', 'quantity': 2, 'unit_price': '10.25', 'subtotal': '20.50'}], 'total': '20.50'}
+               'items': [{'product_id': 1, 'name': 'Producto', 'quantity': 2, 'unit_price': '10.25', 'subtotal': '20.50'}],
+               'total': '20.50', 'payment_method': 'mixed', 'cash_received': '15.00', 'transfer_received': '10.00', 'change_due': '4.50'}
     server_code = '''
 from pathlib import Path
 from server import PrintingServer
@@ -58,7 +59,7 @@ $bus->dispatch($message);
         consumed = command(COMPOSE + ['run', '--rm', '--no-deps', '-e', f'MESSENGER_TRANSPORT_DSN=redis://redis:6379/{stream}',
                                      '-e', f'MESSENGER_CONSUMER_NAME=smoke-{suffix}', '-e', f'PRINT_SERVICE_URL=http://{name}:8080',
                                      'worker', 'php', 'bin/console', 'messenger:consume', 'async', '--limit=2', '--time-limit=15', '-vv'])
-        check = "import json; from pathlib import Path; p=Path('/tmp/printing-smoke'); jobs=list(p.glob('*.json')); assert len(jobs)==1; assert json.loads(jobs[0].read_text())['status']=='sent'; assert Path('/tmp/write-count').read_text().splitlines()==['1']; print('OK: 2 mensajes procesados por el worker, 1 ticket enviado por USB simulado.')"
+        check = "import json; from pathlib import Path; p=Path('/tmp/printing-smoke'); jobs=list(p.glob('*.json')); assert len(jobs)==1; assert json.loads(jobs[0].read_text())['status']=='sent'; assert Path('/tmp/write-count').read_text().splitlines()==['1']; ticket=Path('/tmp/tickets').read_bytes(); assert b'RECIBIDO COP' in ticket and b'$15,00' in ticket; assert b'CAMBIO COP' in ticket and b'$4,50' in ticket; assert b'TRANSFERENCIA COP' in ticket and b'$10,00' in ticket; print('OK: 2 mensajes procesados por el worker, 1 ticket con recibido y cambio enviado por USB simulado.')"
         print(command(['docker', 'exec', name, 'python', '-c', check]).stdout.strip())
     finally:
         subprocess.run(['docker', 'rm', '-f', name], cwd=ROOT, capture_output=True)

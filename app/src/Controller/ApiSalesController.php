@@ -72,10 +72,12 @@ class ApiSalesController extends AbstractController
     }
 
     #[Route('/checkout', name: 'api_sales_checkout', methods: ['POST'])]
-    public function checkout(Request $request, \App\Billing\Invoicing $invoicing): JsonResponse
+    public function checkout(Request $request, \App\Billing\Invoicing $invoicing, \App\Billing\PaidInvoicePrinting $printing): JsonResponse
     {
         $invoice = $invoicing->checkout($request->getSession(), $this->getUser(), $this->input->read($request, 'sales'));
-        return $this->json(['data' => $invoice->toArray(), 'cart' => $this->cart->read($request->getSession(), $this->getUser())], 201, ['Cache-Control' => 'no-store']);
+        $result = ['data' => $invoice->toArray(), 'cart' => $this->cart->read($request->getSession(), $this->getUser())];
+        if ($invoice->getStatus() === 'paid') $result['printing'] = $printing->queue($invoice);
+        return $this->json($result, 201, ['Cache-Control' => 'no-store']);
     }
 
     private function result(array $data): JsonResponse

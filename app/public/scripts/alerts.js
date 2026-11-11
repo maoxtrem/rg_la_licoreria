@@ -65,11 +65,69 @@ export async function confirmCartClear() {
     return result.isConfirmed;
 }
 
-export async function confirmInvoicePayment() {
+export async function confirmInvoicePayment(total) {
+    const cents = (value) => BigInt(value.replace('.', ''));
+    const decimal = (value) => `${value / 100n}.${String(value % 100n).padStart(2, '0')}`;
+    const money = (value) => {
+        const [whole, fraction] = value.split('.');
+        return `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${fraction}`;
+    };
+    const parse = (value) => {
+        const text = value.trim().replace(',', '.');
+        if (!/^\d{1,15}(?:\.\d{1,2})?$/.test(text)) return null;
+        const [whole, fraction = ''] = text.split('.');
+        return `${whole}.${fraction.padEnd(2, '0')}`;
+    };
+    const content = document.createElement('div');
+    const summary = document.createElement('p');
+    summary.textContent = `Total a pagar: ${money(total)} COP`;
+    const transferLabel = document.createElement('label');
+    transferLabel.htmlFor = 'payment-transfer-received'; transferLabel.textContent = 'Transferencia (COP)';
+    const transfer = document.createElement('input');
+    transfer.id = 'payment-transfer-received'; transfer.type = 'text'; transfer.inputMode = 'decimal';
+    transfer.autocomplete = 'off'; transfer.maxLength = 18; transfer.value = '0.00';
+    const label = document.createElement('label');
+    label.htmlFor = 'payment-cash-received'; label.textContent = 'Efectivo recibido (COP)';
+    const input = document.createElement('input');
+    input.id = 'payment-cash-received'; input.type = 'text'; input.inputMode = 'decimal';
+    input.autocomplete = 'off'; input.maxLength = 18; input.value = total;
+    const change = document.createElement('p');
+    change.id = 'payment-change'; change.setAttribute('aria-live', 'polite');
+    const update = () => {
+        const received = parse(input.value), transferred = parse(transfer.value);
+        if (received === null || transferred === null) {
+            change.textContent = 'Ingresa los importes sin separadores de miles.';
+        } else if (cents(transferred) > cents(total)) {
+            change.textContent = 'La transferencia no puede superar el total de la factura.';
+        } else {
+            const difference = cents(received) + cents(transferred) - cents(total);
+            change.textContent = difference < 0n ? `Faltan: ${money(decimal(-difference))}`
+                : `Cambio a devolver: ${money(decimal(difference))}`;
+        }
+    };
+    input.addEventListener('input', update);
+    transfer.addEventListener('input', () => {
+        const transferred = parse(transfer.value);
+        if (transferred !== null && cents(transferred) <= cents(total)) {
+            input.value = decimal(cents(total) - cents(transferred));
+        }
+        Swal.resetValidationMessage(); update();
+    });
+    update();
+    content.append(summary, transferLabel, transfer, label, input, change);
     const result = await Swal.fire(options({
-        icon: 'question', title: '¿Confirmar el pago y facturar?',
-        text: 'Confirma que recibiste el pago. La factura quedará cerrada y no se podrá editar.',
-        showCancelButton: true, confirmButtonText: 'Confirmar pago', focusCancel: true,
+        icon: 'question', title: 'Registrar pago', html: content,
+        showCancelButton: true, confirmButtonText: 'Confirmar pago',
+        didOpen: () => input.focus(),
+        preConfirm: () => {
+            const received = parse(input.value), transferred = parse(transfer.value);
+            if (received === null || transferred === null || cents(transferred) > cents(total)
+                || cents(received) + cents(transferred) < cents(total)) {
+                Swal.showValidationMessage('Revisa efectivo y transferencia: deben cubrir el total y la transferencia no puede superarlo.');
+                return false;
+            }
+            return { cash_received: received, transfer_received: transferred };
+        },
     }));
-    return result.isConfirmed;
+    return result.isConfirmed ? result.value : null;
 }

@@ -111,6 +111,12 @@ export async function startBilling({ actions, onAccessLost }) {
             return row;
         }));
         element('billing-detail-total').textContent = money(data.total);
+        element('billing-detail-payment').hidden = data.status !== 'paid';
+        element('billing-detail-method').textContent = { cash: 'Efectivo', transfer: 'Transferencia', mixed: 'Efectivo y transferencia' }[data.payment_method] ?? 'Sin registro';
+        element('billing-detail-transfer').textContent = data.transfer_received == null ? 'Sin registro' : money(data.transfer_received);
+        element('billing-detail-cash').hidden = data.payment_method === 'transfer';
+        element('billing-detail-received').textContent = data.cash_received == null ? 'Sin registro' : money(data.cash_received);
+        element('billing-detail-change').textContent = data.change_due == null ? 'Sin registro' : money(data.change_due);
         detailDialog.showModal();
     }
     async function edit(id) {
@@ -145,11 +151,15 @@ export async function startBilling({ actions, onAccessLost }) {
         if (!await authorize('update')) return;
         const { data } = await request(`/api/billing/${id}`);
         if (data.status !== 'pending') { await load(); throw new Error('La factura ya está facturada. Solo se puede imprimir.'); }
-        if (!await confirmInvoicePayment()) return;
+        const payment = await confirmInvoicePayment(data.total);
+        if (payment === null) return;
+        let result;
         try {
-            await mutate(`/api/billing/${id}/pay`, 'POST', { revision: data.revision });
+            result = await mutate(`/api/billing/${id}/pay`, 'POST', { revision: data.revision, ...payment });
         } catch (error) { await load(); throw error; }
-        await load(); await notifySuccess(`${data.number}: facturada. Ya puedes imprimirla.`);
+        await load();
+        if (result.printing?.status === 'queued') await notifySuccess(`${data.number}: facturada y enviada a la cola de impresión.`);
+        else await alertError('El pago quedó registrado, pero no se pudo enviar la impresión. Usa el botón Imprimir para enviarla nuevamente.', 'Pago registrado');
     }
     async function print(id) {
         if (!await authorize()) return;

@@ -1,6 +1,7 @@
 """Pruebas HTTP contra el monolito local: python3 app/tests/api_auth_smoke.py."""
 import http.cookiejar
 import json
+import os
 from pathlib import Path
 import secrets
 import subprocess
@@ -10,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE_URL = "http://localhost"
+BASE_URL = os.environ.get('SMOKE_BASE_URL', 'http://localhost')
 
 
 class ApiAuthenticationTest(unittest.TestCase):

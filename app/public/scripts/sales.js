@@ -200,20 +200,24 @@ export async function startSales({ actions, onAccessLost }) {
 
     async function checkout(status) {
         if (pending || !cart.items.length) return;
-        if (status === 'paid' && !await confirmInvoicePayment()) return;
+        const payment = status === 'paid' ? await confirmInvoicePayment(cart.total) : null;
+        if (status === 'paid' && payment === null) return;
         await enqueue(async () => {
             if (!await authorize('create')) return;
             const csrf = await api('/api/csrf');
             if (!csrf.response.ok) throw new Error('No se pudo preparar el registro.');
             const result = await api('/api/sales/cart/checkout', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.data.sales },
-                body: JSON.stringify({ status, checkout_key: cart.checkout_key }),
+                body: JSON.stringify({ status, checkout_key: cart.checkout_key, ...(payment ?? {}) }),
             });
             if (expired(result.response)) return;
             if (!result.response.ok) { await alertError(result.data?.error ?? 'No se pudo guardar la venta.'); return; }
             cart = result.data.cart;
             render();
-            await notifySuccess(`${result.data.data.number}: ${result.data.data.status === 'paid' ? 'facturada' : 'pendiente de pago'}. Disponible en Facturación.`);
+            if (result.data.data.status === 'paid') {
+                if (result.data.printing?.status === 'queued') await notifySuccess(`${result.data.data.number}: facturada y enviada a la cola de impresión.`);
+                else await alertError('El pago quedó registrado, pero no se pudo enviar la impresión. Puedes imprimir la factura desde Facturación.', 'Pago registrado');
+            } else await notifySuccess(`${result.data.data.number}: pendiente de pago. Disponible en Facturación.`);
         });
     }
     element('sales-pay').addEventListener('click', () => checkout('paid'));

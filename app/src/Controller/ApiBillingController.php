@@ -82,10 +82,10 @@ class ApiBillingController extends AbstractController
     }
 
     #[Route('/{id}/pay', name: 'api_billing_pay', defaults: ['_permission_action' => 'update'], requirements: ['id' => '\d+'], methods: ['POST'])]
-    public function pay(int $id, Request $request): JsonResponse
+    public function pay(int $id, Request $request, \App\Billing\PaidInvoicePrinting $printing): JsonResponse
     {
         $invoice = $this->invoicing->change($id, $this->input->read($request, 'billing'), true);
-        return $this->json(['data' => $invoice->toArray()], headers: ['Cache-Control' => 'no-store']);
+        return $this->json(['data' => $invoice->toArray(), 'printing' => $printing->queue($invoice)], headers: ['Cache-Control' => 'no-store']);
     }
 
     #[Route('/{id}/print', name: 'api_billing_print', defaults: ['_permission_action' => 'view'], requirements: ['id' => '\d+'], methods: ['POST'])]

@@ -49,6 +49,7 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
             self.page.locator('#sales-pending').click()
         self.assertEqual(result.value.status, 201)
         invoice = result.value.json()['data']
+        self.assertNotIn('printing', result.value.json())
         expect(self.page.locator('#sales-summary-quantity')).to_have_text('0')
         self.page.get_by_role('link', name='Facturación', exact=True).click()
         today = datetime.fromisoformat(invoice['created_at']).astimezone(ZoneInfo('America/Bogota')).date().isoformat()
@@ -71,9 +72,12 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
         self.assertEqual(saved.value.status, 200)
         expect(self.page.locator('#billing-dialog')).to_be_hidden()
         row.get_by_role('button', name='Pagar ' + invoice['number'], exact=True).click()
+        self.page.locator('#payment-cash-received').fill('500000')
+        expect(self.page.locator('#payment-change')).to_contain_text('Cambio a devolver')
         with self.page.expect_response(lambda r: r.url.endswith('/pay')) as paid:
             self.page.locator('.swal2-confirm').click()
         self.assertEqual(paid.value.status, 200)
+        self.assertEqual(paid.value.json()['printing']['status'], 'queued')
         expect(row.get_by_role('button', name='Imprimir ' + invoice['number'], exact=True)).to_be_visible()
         expect(row.get_by_role('button', name='Editar ' + invoice['number'], exact=True)).to_have_count(0)
         expect(row.get_by_role('button', name='Pagar ' + invoice['number'], exact=True)).to_have_count(0)
@@ -117,11 +121,22 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
     def test_direct_payment_from_sales(self):
         self.scan_product()
         self.page.locator('#sales-pay').click()
+        expect(self.page.locator('#payment-cash-received')).to_have_value('45000.50')
+        expect(self.page.locator('#payment-transfer-received')).to_have_value('0.00')
+        self.page.locator('#payment-cash-received').fill('0')
+        self.page.locator('.swal2-confirm').click()
+        expect(self.page.locator('.swal2-validation-message')).to_be_visible()
+        self.page.locator('#payment-cash-received').fill('500000')
+        expect(self.page.locator('#payment-change')).to_contain_text('Cambio a devolver')
         with self.page.expect_response(lambda r: r.url.endswith('/api/sales/cart/checkout')) as result:
             self.page.locator('.swal2-confirm').click()
         self.assertEqual(result.value.status, 201)
         invoice = result.value.json()['data']
         self.assertEqual(invoice['status'], 'paid')
+        self.assertEqual(result.value.json()['printing']['status'], 'queued')
+        self.assertEqual(invoice['cash_received'], '500000.00')
+        self.assertEqual(invoice['payment_method'], 'cash')
+        self.assertIsNotNone(invoice['change_due'])
         expect(self.page.locator('#sales-summary-quantity')).to_have_text('0')
         self.page.get_by_role('link', name='Facturación', exact=True).click()
         row = self.page.locator(f'tr[data-invoice-id="{invoice["id"]}"]')
@@ -136,7 +151,54 @@ class BillingBrowserTest(products_browser.ProductsBrowserTest):
         expect(self.page.locator('#billing-detail-status')).to_have_text('Facturada')
         expect(self.page.locator('#billing-detail-rows')).to_contain_text('Producto factura prueba')
         expect(self.page.locator('#billing-detail-dialog input')).to_have_count(0)
+        expect(self.page.locator('#billing-detail-received')).to_have_text('500.000,00')
+        whole, fraction = invoice['change_due'].split('.')
+        expected_change = format(int(whole), ',').replace(',', '.') + ',' + fraction
+        expect(self.page.locator('#billing-detail-change')).to_have_text(expected_change)
+
+
+    def test_transfer_payment_from_sales_and_billing(self):
+        for pending in [False, True]:
+            self.page.get_by_role('link', name='Ventas', exact=True).click()
+            self.scan_product()
+            if pending:
+                with self.page.expect_response(lambda r: r.url.endswith('/checkout')) as saved:
+                    self.page.locator('#sales-pending').click()
+                invoice = saved.value.json()['data']
+                self.page.get_by_role('link', name='Facturación', exact=True).click()
+                row = self.page.locator(f'tr[data-invoice-id="{invoice["id"]}"]')
+                row.get_by_role('button', name='Pagar ' + invoice['number'], exact=True).click()
+            else:
+                self.page.locator('#sales-pay').click()
+            expect(self.page.locator('#payment-cash-received')).to_have_value('45000.50')
+            expect(self.page.locator('#payment-transfer-received')).to_have_value('0.00')
+            self.page.locator('#payment-transfer-received').fill('10000' if pending else '45000.50')
+            expect(self.page.locator('#payment-cash-received')).to_have_value('35000.50' if pending else '0.00')
+            expect(self.page.locator('#payment-change')).to_contain_text('Cambio a devolver: $0,00')
+            if pending:
+                self.page.locator('#payment-cash-received').fill('40000')
+                expect(self.page.locator('#payment-change')).to_contain_text('$4.999,50')
+            with self.page.expect_response(lambda r: r.url.endswith('/pay' if pending else '/checkout')) as result:
+                self.page.locator('.swal2-confirm').click()
+            self.assertEqual(result.value.status, 200 if pending else 201)
+            body = result.value.json()
+            invoice = body['data']
+            self.assertEqual(invoice['payment_method'], 'mixed' if pending else 'transfer')
+            self.assertEqual(invoice['cash_received'], '40000.00' if pending else '0.00')
+            self.assertEqual(invoice['change_due'], '4999.50' if pending else '0.00')
+            self.assertEqual(invoice['transfer_received'], '10000.00' if pending else '45000.50')
+            self.assertEqual(body['printing']['status'], 'queued')
+            self.page.get_by_role('link', name='Facturación', exact=True).click()
+            row = self.page.locator(f'tr[data-invoice-id="{invoice["id"]}"]')
+            row.get_by_role('button', name='Ver contenido de ' + invoice['number'], exact=True).click()
+            expect(self.page.locator('#billing-detail-method')).to_have_text('Efectivo y transferencia' if pending else 'Transferencia')
+            expect(self.page.locator('#billing-detail-transfer')).to_have_text('10.000,00' if pending else '45.000,50')
+            if pending:
+                expect(self.page.locator('#billing-detail-cash')).to_be_visible()
+            else:
+                expect(self.page.locator('#billing-detail-cash')).to_be_hidden()
+            self.page.locator('#billing-detail-done').click()
 
 
 if __name__ == '__main__':
-    unittest.main(defaultTest=['BillingBrowserTest.test_pending_edit_pay_and_print_action', 'BillingBrowserTest.test_direct_payment_from_sales'], verbosity=2)
+    unittest.main(defaultTest=['BillingBrowserTest.test_pending_edit_pay_and_print_action', 'BillingBrowserTest.test_direct_payment_from_sales', 'BillingBrowserTest.test_transfer_payment_from_sales_and_billing'], verbosity=2)

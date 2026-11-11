@@ -3,12 +3,13 @@ import http.client
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
 import usb.core
-from printer import SatPrinter, PrinterUnavailable
+from printer import SatPrinter, UsbPrinter, PrinterUnavailable
 import urllib.error
 import urllib.request
 
@@ -41,7 +42,7 @@ class PrintingTest(unittest.TestCase):
         return response.status, json.loads(response.read())
 
     def test_printer_status(self):
-        with patch('printer.usb.core.find', return_value=None):
+        with patch.object(SatPrinter, 'status', return_value={'connected': False, 'vendor_id': '2aaf', 'product_id': '6015'}):
             status, result = self.request('/printer')
         self.assertEqual(status, 200)
         self.assertEqual(result['vendor_id'], '2aaf')
@@ -107,12 +108,12 @@ class UsbPrinterTest(unittest.TestCase):
     def test_no_printer_does_not_send(self):
         with patch('printer.usb.core.find', return_value=None) as find:
             with self.assertRaises(PrinterUnavailable):
-                SatPrinter().test_print()
+                UsbPrinter().test_print()
         find.assert_called_once_with(idVendor=0x2aaf, idProduct=0x6015)
 
     def test_usb_access_error_is_reported(self):
         with patch('printer.usb.core.find', side_effect=usb.core.USBError('denied')):
-            status = SatPrinter().status()
+            status = UsbPrinter().status()
         self.assertFalse(status['connected'])
         self.assertIn('error', status)
 
@@ -132,14 +133,34 @@ class UsbPrinterTest(unittest.TestCase):
                      patch('printer.usb.util.dispose_resources') as dispose:
                     if partial:
                         with self.assertRaises(PrinterUnavailable):
-                            SatPrinter().write(b'abc')
+                            UsbPrinter().write(b'abc')
                     else:
-                        SatPrinter().write(b'abc')
+                        UsbPrinter().write(b'abc')
                 device.write.assert_called_once_with(1, b'abc', timeout=5000)
                 claim.assert_called_once_with(device, 0)
                 release.assert_called_once_with(device, 0)
                 device.attach_kernel_driver.assert_called_once_with(0)
                 dispose.assert_called_once_with(device)
+
+
+class ReconnectingPrinterTest(unittest.TestCase):
+    def test_same_service_discovers_reconnected_device_in_fresh_process(self):
+        printer = SatPrinter()
+        with patch('printer.subprocess.run', side_effect=[
+            subprocess.CompletedProcess([], 0, b'{"connected":false}'),
+            subprocess.CompletedProcess([], 0, b'{"connected":true,"address":4}'),
+        ]) as run:
+            self.assertFalse(printer.status()['connected'])
+            self.assertTrue(printer.status()['connected'])
+        self.assertEqual(run.call_count, 2)
+
+    def test_failed_or_timed_out_send_is_not_repeated(self):
+        for failure in (subprocess.CalledProcessError(1, 'printer'), subprocess.TimeoutExpired('printer', 15)):
+            with self.subTest(failure=failure), patch('printer.subprocess.run', side_effect=failure) as run:
+                with self.assertRaises(PrinterUnavailable):
+                    SatPrinter().write(b'ticket')
+                run.assert_called_once()
+                self.assertEqual(run.call_args.kwargs['input'], b'ticket')
 
 
 class InvoicePrintingTest(unittest.TestCase):
@@ -180,6 +201,68 @@ class InvoicePrintingTest(unittest.TestCase):
         self.server.printer.status.return_value = {'connected': True}
         self.assertEqual(self.request(payload=self.invoice_payload())[0], 200)
         self.server.printer.write.assert_called_once()
+
+    def test_received_and_change_are_printed(self):
+        payload = self.invoice_payload()
+        payload['data']['invoice'].update(cash_received='30.00', change_due='9.50')
+        payload['data']['invoice']['payment_method'] = 'cash'
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        ticket = self.server.printer.write.call_args.args[0]
+        self.assertIn(b'EFECTIVO RECIBIDO COP', ticket)
+        self.assertIn(b'PAGO: EFECTIVO', ticket)
+        self.assertIn(b'$30,00', ticket)
+        self.assertIn(b'CAMBIO COP', ticket)
+        self.assertIn(b'$9,50', ticket)
+
+    def test_transfer_method_is_printed_without_cash_or_change(self):
+        payload = self.invoice_payload()
+        payload['data']['invoice'].update(payment_method='transfer', cash_received=None, change_due=None)
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        ticket = self.server.printer.write.call_args.args[0]
+        self.assertIn(b'PAGO: TRANSFERENCIA', ticket)
+        self.assertIn(b'TRANSFERENCIA COP', ticket)
+        self.assertIn(b'$20,50', ticket)
+        self.assertNotIn(b'RECIBIDO COP', ticket)
+        self.assertNotIn(b'CAMBIO COP', ticket)
+
+    def test_invalid_method_or_transfer_with_cash_is_rejected(self):
+        for payment in [dict(payment_method='other'), dict(payment_method='cash'),
+                        dict(payment_method='transfer', cash_received='30.00', change_due='9.50')]:
+            payload = self.invoice_payload()
+            payload['data']['invoice'].update(payment)
+            self.assertEqual(self.request(payload=payload)[0], 422)
+        self.server.printer.write.assert_not_called()
+
+    def test_split_payment_and_change_are_printed(self):
+        payload = self.invoice_payload()
+        payload['data']['invoice'].update(payment_method='mixed', cash_received='15.00', transfer_received='10.00', change_due='4.50')
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        ticket = self.server.printer.write.call_args.args[0]
+        for text in [b'PAGO: EFECTIVO Y TRANSFERENCIA', b'TRANSFERENCIA COP', b'$10,00', b'RECIBIDO COP', b'$15,00', b'CAMBIO COP', b'$4,50']:
+            self.assertIn(text, ticket)
+        rows = ticket.split(b'\x1dV', 1)[0].decode('ascii').splitlines()
+        labels = ['EFECTIVO RECIBIDO COP', 'TRANSFERENCIA COP', 'CAMBIO COP']
+        indices = []
+        for label, value in zip(labels, ['$15,00', '$10,00', '$4,50']):
+            row = next(row for row in rows if row.startswith(label))
+            self.assertEqual(len(row), 42)
+            self.assertTrue(row.endswith(value))
+            indices.append(rows.index(row))
+        self.assertEqual(indices, list(range(indices[0], indices[0] + 3)))
+
+    def test_invalid_split_amounts_are_rejected(self):
+        for cash, transfer, change in [('10.00', '10.00', '0.00'), ('0.00', '21.00', '0.50'), ('15.00', '10.00', '0.00')]:
+            payload = self.invoice_payload()
+            payload['data']['invoice'].update(payment_method='mixed', cash_received=cash, transfer_received=transfer, change_due=change)
+            self.assertEqual(self.request(payload=payload)[0], 422)
+        self.server.printer.write.assert_not_called()
+
+    def test_inconsistent_payment_never_reaches_printer(self):
+        for received, change in [('30.00', '0.00'), ('20.00', '0.00'), ('30.00', None), (None, '0.00')]:
+            payload = self.invoice_payload()
+            payload['data']['invoice'].update(cash_received=received, change_due=change)
+            self.assertEqual(self.request(payload=payload)[0], 422)
+        self.server.printer.write.assert_not_called()
 
     def test_uncertain_write_is_never_repeated(self):
         self.server.printer.write.side_effect = PrinterUnavailable('timeout')

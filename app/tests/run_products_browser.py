@@ -28,6 +28,8 @@ def main():
     BrowserFixture.fixture('create')
     try:
         credentials = ['-e', f'SMOKE_USERNAME={BrowserFixture.username}', '-e', f'SMOKE_PASSWORD={BrowserFixture.password}']
+        if os.environ.get('SMOKE_BASE_URL'):
+            credentials += ['-e', 'SMOKE_BASE_URL=' + os.environ['SMOKE_BASE_URL']]
         if container:
             command = ['docker', 'exec', *credentials, container, 'python', '/tests/' + test_file]
         else:

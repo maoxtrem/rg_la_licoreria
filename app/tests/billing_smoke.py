@@ -38,9 +38,13 @@ $em->createQuery('DELETE FROM App\Entity\Invoice i WHERE i.createdBy = :id')->se
     def checkout(self, product, status='pending'):
         self.assertEqual(self.scan(product)[0], 200)
         key = self.sales()[1]['data']['checkout_key']
-        status_code, result = self.sales('/checkout', 'POST', {'status': status, 'checkout_key': key})
+        status_code, result = self.sales('/checkout', 'POST', {'status': status, 'checkout_key': key, **({'cash_received': self.sales()[1]['data']['total']} if status == 'paid' else {})})
         self.assertEqual(status_code, 201, result)
         self.assertEqual(result['cart']['items'], [])
+        if status == 'paid':
+            self.assertEqual(result['printing']['status'], 'queued')
+        else:
+            self.assertNotIn('printing', result)
         return result['data'], key
 
     def test_billing_pending_edit_pay_and_paid_lock(self):
@@ -62,13 +66,17 @@ $em->createQuery('DELETE FROM App\Entity\Invoice i WHERE i.createdBy = :id')->se
         self.assertEqual(edited['data']['total'], '25.00')
         self.assertEqual(self.billing(path, 'PATCH', change)[0], 409)
         revision = edited['data']['revision']
-        status, paid = self.billing(path + '/pay', 'POST', {'revision': revision})
+        status, paid = self.billing(path + '/pay', 'POST', {'revision': revision, 'cash_received': '30.00'})
         self.assertEqual(status, 200, paid)
         self.assertEqual(paid['data']['status'], 'paid')
+        self.assertEqual(paid['printing']['status'], 'queued')
         self.assertIsNotNone(paid['data']['paid_at'])
         self.assertIsNotNone(paid['data']['company'])
+        self.assertEqual(paid['data']['cash_received'], '30.00')
+        self.assertEqual(paid['data']['payment_method'], 'cash')
+        self.assertEqual(paid['data']['change_due'], '5.00')
         self.assertEqual(self.billing(path, 'PATCH', {'revision': paid['data']['revision'], 'items': change['items']})[0], 409)
-        self.assertEqual(self.billing(path + '/pay', 'POST', {'revision': paid['data']['revision']})[0], 409)
+        self.assertEqual(self.billing(path + '/pay', 'POST', {'revision': paid['data']['revision'], 'cash_received': '30.00'})[0], 409)
         self.assertEqual(self.billing(path)[1]['data'], paid['data'])
 
     def test_billing_multiple_pending_and_direct_paid(self):
@@ -162,9 +170,99 @@ foreach (json_decode(getenv('SMOKE_INVOICE_DATES'), true) as $id => $date) {
         self.assertEqual(edited['data']['items'][0]['barcode'], product['barcode'])
         self.assertEqual(edited['data']['items'][0]['unit_price'], '12.35')
         self.assertEqual(edited['data']['total'], '24.70')
-        status, finalized = self.billing(f'/{pending["id"]}/pay', 'POST', {'revision': edited['data']['revision']})
+        status, finalized = self.billing(f'/{pending["id"]}/pay', 'POST', {'revision': edited['data']['revision'], 'cash_received': '25.00'})
         self.assertEqual(status, 200, finalized)
         self.assertEqual(finalized['data']['items'], edited['data']['items'])
+
+    def test_billing_cash_validation_and_checkout_persistence(self):
+        self.prepare_billing()
+        product = self.sell_product('12.35')
+        self.assertEqual(self.scan(product)[0], 200)
+        key = self.sales()[1]['data']['checkout_key']
+        for value in [None, 20, '12.34', '-1.00', '20.001', '1e3', '9' * 16 + '.00']:
+            status, result = self.sales('/checkout', 'POST', {'status': 'paid', 'checkout_key': key, 'cash_received': value})
+            self.assertEqual(status, 422, result)
+            self.assertEqual(self.sales()[1]['data']['checkout_key'], key)
+        payload = {'status': 'paid', 'checkout_key': key, 'cash_received': '20.00'}
+        status, result = self.sales('/checkout', 'POST', payload)
+        self.assertEqual(status, 201, result)
+        invoice = result['data']
+        self.assertEqual(invoice['cash_received'], '20.00')
+        self.assertEqual(invoice['change_due'], '7.65')
+        payload['cash_received'] = '99.00'
+        repeated = self.sales('/checkout', 'POST', payload)[1]
+        self.assertEqual(repeated['data'], invoice)
+        self.assertEqual(repeated['printing']['print_job_id'], result['printing']['print_job_id'])
+        self.assertEqual(self.billing(f'/{invoice["id"]}')[1]['data'], invoice)
+        pending, _ = self.checkout(product)
+        path = f'/{pending["id"]}'
+        self.assertIsNone(pending['cash_received'])
+        self.assertIsNone(pending['change_due'])
+        for value in [None, '12.34', 'bad', 20]:
+            self.assertEqual(self.billing(path + '/pay', 'POST', {'revision': pending['revision'], 'cash_received': value})[0], 422)
+            self.assertEqual(self.billing(path)[1]['data'], pending)
+        status, paid = self.billing(path + '/pay', 'POST', {'revision': pending['revision'], 'cash_received': '12.35'})
+        self.assertEqual(status, 200, paid)
+        self.assertEqual(paid['data']['change_due'], '0.00')
+
+    def test_billing_transfer_from_sales_and_pending_invoice(self):
+        self.prepare_billing()
+        product = self.sell_product('12.35')
+        self.assertEqual(self.scan(product)[0], 200)
+        key = self.sales()[1]['data']['checkout_key']
+        for extra in [{'payment_method': 'card'}, {'payment_method': None}, {'payment_method': 'transfer', 'cash_received': '20.00'}]:
+            self.assertEqual(self.sales('/checkout', 'POST', {'status': 'paid', 'checkout_key': key, **extra})[0], 422)
+        payload = {'status': 'paid', 'checkout_key': key, 'payment_method': 'transfer'}
+        status, result = self.sales('/checkout', 'POST', payload)
+        self.assertEqual(status, 201, result)
+        direct = result['data']
+        self.assertEqual(direct['payment_method'], 'transfer')
+        self.assertIsNone(direct['cash_received'])
+        self.assertIsNone(direct['change_due'])
+        self.assertEqual(result['printing']['status'], 'queued')
+        repeated = self.sales('/checkout', 'POST', payload)[1]
+        self.assertEqual(repeated['data'], direct)
+        self.assertEqual(repeated['printing'], result['printing'])
+        self.assertEqual(self.billing(f'/{direct["id"]}')[1]['data'], direct)
+        pending, _ = self.checkout(product)
+        self.assertIsNone(pending['payment_method'])
+        path = f'/{pending["id"]}'
+        for extra in [{'payment_method': 'other'}, {'payment_method': 'transfer', 'cash_received': '99.00'}]:
+            self.assertEqual(self.billing(path + '/pay', 'POST', {'revision': pending['revision'], **extra})[0], 422)
+            self.assertEqual(self.billing(path)[1]['data'], pending)
+        status, paid = self.billing(path + '/pay', 'POST', {'revision': pending['revision'], 'payment_method': 'transfer'})
+        self.assertEqual(status, 200, paid)
+        self.assertEqual(paid['data']['payment_method'], 'transfer')
+        self.assertIsNone(paid['data']['cash_received'])
+        self.assertIsNone(paid['data']['change_due'])
+        self.assertEqual(paid['printing']['status'], 'queued')
+        self.assertEqual(self.billing(path)[1]['data'], paid['data'])
+        self.assertEqual(self.billing(path + '/pay', 'POST', {'revision': paid['data']['revision'], 'payment_method': 'cash', 'cash_received': '20.00'})[0], 409)
+
+    def test_billing_split_payment_and_change(self):
+        self.prepare_billing()
+        product = self.sell_product('100.50')
+        self.assertEqual(self.scan(product)[0], 200)
+        key = self.sales()[1]['data']['checkout_key']
+        for cash, transfer in [('50.00', '50.00'), ('0.00', '101.00'), ('100.50', '-1.00'), ('100.50', None), ('bad', '0.00')]:
+            self.assertEqual(self.sales('/checkout', 'POST', {'status': 'paid', 'checkout_key': key, 'cash_received': cash, 'transfer_received': transfer})[0], 422)
+            self.assertEqual(self.sales()[1]['data']['checkout_key'], key)
+        status, result = self.sales('/checkout', 'POST', {'status': 'paid', 'checkout_key': key, 'cash_received': '80.00', 'transfer_received': '30.50'})
+        self.assertEqual(status, 201, result)
+        invoice = result['data']
+        self.assertEqual((invoice['payment_method'], invoice['cash_received'], invoice['transfer_received'], invoice['change_due']), ('mixed', '80.00', '30.50', '10.00'))
+        self.assertEqual(result['printing']['status'], 'queued')
+        self.assertEqual(self.billing(f'/{invoice["id"]}')[1]['data'], invoice)
+        pending, _ = self.checkout(product)
+        path = f'/{pending["id"]}'
+        status, paid = self.billing(path + '/pay', 'POST', {'revision': pending['revision'], 'cash_received': '0.00', 'transfer_received': '100.50'})
+        self.assertEqual(status, 200, paid)
+        self.assertEqual(paid['data']['payment_method'], 'transfer')
+        self.assertEqual(paid['data']['cash_received'], '0.00')
+        self.assertEqual(paid['data']['change_due'], '0.00')
+        self.assertEqual(paid['data']['transfer_received'], '100.50')
+        self.assertEqual(paid['printing']['status'], 'queued')
+        self.assertEqual(self.billing(path)[1]['data'], paid['data'])
 
     def test_billing_permissions_and_invalid_edit(self):
         group = self.prepare_billing()
