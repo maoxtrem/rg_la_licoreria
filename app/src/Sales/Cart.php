@@ -4,6 +4,7 @@ namespace App\Sales;
 
 use App\Entity\Product;
 use App\Entity\User;
+use App\Inventory\InventoryService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -14,7 +15,7 @@ class Cart
     private const MAX_QUANTITY = 9999;
     private const MAX_LINES = 100;
 
-    public function __construct(private readonly EntityManagerInterface $entityManager, private readonly UrlGeneratorInterface $urls)
+    public function __construct(private readonly EntityManagerInterface $entityManager, private readonly UrlGeneratorInterface $urls, private readonly InventoryService $inventory)
     {
     }
 
@@ -51,7 +52,8 @@ class Cart
         $session->set($this->key($user), $valid);
 
         return ['items' => $items, 'line_count' => count($items), 'quantity' => $units,
-            'total' => self::money($total), 'checkout_key' => $this->checkoutKey($session, $user), 'removed_unavailable' => $removed];
+            'total' => self::money($total), 'checkout_key' => $this->checkoutKey($session, $user),
+            'reservation_key' => $this->reservationKey($session, $user), 'removed_unavailable' => $removed];
     }
 
     public function scan(SessionInterface $session, User $user, string $barcode): array
@@ -66,8 +68,15 @@ class Cart
         }
         $quantity = ($quantities[$id] ?? 0) + 1;
         if ($quantity > self::MAX_QUANTITY) throw new CartException(422, 'La cantidad máxima por producto es 9999.');
+        $previous = $quantities;
         $quantities[$id] = $quantity;
         $session->set($this->key($user), $quantities);
+        try {
+            $this->inventory->syncCart($this->reservationKey($session, $user), $quantities);
+        } catch (\Throwable $exception) {
+            $session->set($this->key($user), $previous);
+            throw $exception;
+        }
         $session->remove($this->key($user).'.checkout');
 
         return $this->read($session, $user);
@@ -78,8 +87,15 @@ class Cart
         if ($quantity < 1 || $quantity > self::MAX_QUANTITY) throw new CartException(422, 'La cantidad debe estar entre 1 y 9999.');
         $quantities = $session->get($this->key($user), []);
         if (!isset($quantities[$id]) || !$this->entityManager->find(Product::class, $id)) throw new CartException(404, 'El producto ya no está en el carrito.');
+        $previous = $quantities;
         $quantities[$id] = $quantity;
         $session->set($this->key($user), $quantities);
+        try {
+            $this->inventory->syncCart($this->reservationKey($session, $user), $quantities);
+        } catch (\Throwable $exception) {
+            $session->set($this->key($user), $previous);
+            throw $exception;
+        }
         $session->remove($this->key($user).'.checkout');
 
         return $this->read($session, $user);
@@ -91,6 +107,7 @@ class Cart
         if (!isset($quantities[$id])) throw new CartException(404, 'El producto ya no está en el carrito.');
         unset($quantities[$id]);
         $session->set($this->key($user), $quantities);
+        $this->inventory->syncCart($this->reservationKey($session, $user), $quantities);
         $session->remove($this->key($user).'.checkout');
 
         return $this->read($session, $user);
@@ -98,14 +115,24 @@ class Cart
 
     public function clear(SessionInterface $session, User $user): array
     {
+        $reservationKey = $this->reservationKey($session, $user);
         $session->remove($this->key($user));
+        $this->inventory->releaseCart($reservationKey);
         $session->remove($this->key($user).'.checkout');
+        $session->remove($this->key($user).'.reservation');
         return $this->read($session, $user);
     }
 
     private function checkoutKey(SessionInterface $session, User $user): string
     {
         $key = $this->key($user).'.checkout';
+        if (!$session->has($key)) $session->set($key, bin2hex(random_bytes(16)));
+        return $session->get($key);
+    }
+
+    private function reservationKey(SessionInterface $session, User $user): string
+    {
+        $key = $this->key($user).'.reservation';
         if (!$session->has($key)) $session->set($key, bin2hex(random_bytes(16)));
         return $session->get($key);
     }

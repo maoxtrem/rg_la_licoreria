@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { alertError, alertPermission, confirmInvoicePayment, notifySuccess } from './alerts.js';
+import { alertError, alertPermission, confirmInvoiceCancel, confirmInvoicePayment, notifySuccess } from './alerts.js';
 
 const element = (id) => document.getElementById(id);
 const money = (value) => {
@@ -80,13 +80,13 @@ export async function startBilling({ actions, onAccessLost }) {
             if (page > pages) { page = pages; return await load(); }
             const rows = result.data.map((invoice) => {
                 const row = document.createElement('tr'); row.dataset.invoiceId = invoice.id;
-                row.append(cell(invoice.number), cell(new Date(invoice.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' })), cell(invoice.status === 'paid' ? 'Facturada' : 'Pendiente de pago'), cell(money(invoice.total), 'price-cell'));
+                row.append(cell(invoice.number), cell(new Date(invoice.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' })), cell(invoice.status === 'paid' ? 'Facturada' : (invoice.status === 'cancelled' ? 'Cancelada' : 'Pendiente de pago')), cell(money(invoice.total), 'price-cell'));
                 const controls = cell('', 'row-actions');
                 controls.append(button('Ver contenido', `Ver contenido de ${invoice.number}`, () => run(() => show(invoice.id))));
                 if (invoice.status === 'paid') {
                     controls.append(button('Imprimir', `Imprimir ${invoice.number}`, () => run(() => print(invoice.id))));
-                } else if (permissions.update) {
-                    controls.append(button('Editar', `Editar ${invoice.number}`, () => run(() => edit(invoice.id))), button('Pagar', `Pagar ${invoice.number}`, () => run(() => pay(invoice.id))));
+                } else if (invoice.status === 'pending' && permissions.update) {
+                    controls.append(button('Editar', `Editar ${invoice.number}`, () => run(() => edit(invoice.id))), button('Pagar', `Pagar ${invoice.number}`, () => run(() => pay(invoice.id))), button('Cancelar', `Cancelar ${invoice.number}`, () => run(() => cancel(invoice.id))));
                 }
                 row.append(controls); return row;
             });
@@ -102,7 +102,7 @@ export async function startBilling({ actions, onAccessLost }) {
         if (!await authorize()) return;
         const { data } = await request(`/api/billing/${id}`);
         element('billing-detail-title').textContent = data.number;
-        element('billing-detail-status').textContent = data.status === 'paid' ? 'Facturada' : 'Pendiente de pago';
+        element('billing-detail-status').textContent = data.status === 'paid' ? 'Facturada' : (data.status === 'cancelled' ? 'Cancelada' : 'Pendiente de pago');
         const date = (value) => new Date(value).toLocaleString('es-CO', { timeZone: 'America/Bogota' });
         element('billing-detail-date').textContent = `Creada: ${date(data.created_at)}` + (data.paid_at ? ` · Pagada: ${date(data.paid_at)}` : '');
         element('billing-detail-rows').replaceChildren(...data.items.map((item) => {
@@ -160,6 +160,15 @@ export async function startBilling({ actions, onAccessLost }) {
         await load();
         if (result.printing?.status === 'queued') await notifySuccess(`${data.number}: facturada y enviada a la cola de impresión.`);
         else await alertError('El pago quedó registrado, pero no se pudo enviar la impresión. Usa el botón Imprimir para enviarla nuevamente.', 'Pago registrado');
+    }
+    async function cancel(id) {
+        if (!await authorize('update')) return;
+        const { data } = await request(`/api/billing/${id}`);
+        if (data.status !== 'pending') { await load(); throw new Error('Solo se pueden cancelar registros pendientes.'); }
+        if (!await confirmInvoiceCancel(data.number)) return;
+        await mutate(`/api/billing/${id}/cancel`, 'POST', {});
+        await load();
+        await notifySuccess(`${data.number}: cancelada y reserva liberada.`);
     }
     async function print(id) {
         if (!await authorize()) return;

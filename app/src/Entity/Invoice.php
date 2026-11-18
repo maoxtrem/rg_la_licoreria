@@ -59,6 +59,13 @@ class Invoice
     public function getRevision(): int { return $this->revision; }
     public function getItems(): array { return $this->items; }
 
+    public function cancel(): void
+    {
+        $this->assertPending();
+        $this->status = 'cancelled';
+        ++$this->revision;
+    }
+
     public function replaceItems(array $items, string $total): void
     {
         $this->assertPending();

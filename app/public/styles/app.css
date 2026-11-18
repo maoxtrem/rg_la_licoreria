@@ -33,6 +33,24 @@ input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid 
 .dashboard { max-width: 1050px; margin: auto; padding: 64px 32px; }
 .account-card { max-width: 580px; margin-top: 36px; }
 .account-card .button { margin-top: 12px; }
+.home-modules { margin-top: 52px; }
+.module-cards-heading { display: flex; align-items: center; gap: 14px; margin: 36px 0 18px; color: var(--muted); font: 650 11px/1.5 system-ui, sans-serif; letter-spacing: 1.8px; text-transform: uppercase; }
+.module-cards-heading::after { content: ''; height: 1px; flex: 1; background: var(--line); }
+.module-cards-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.home-module-card { position: relative; display: flex; flex-direction: column; min-height: 174px; margin: 0; padding: 26px 26px 24px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, #fffdf9 0%, #fbf6f0 100%); color: var(--ink); text-decoration: none; box-shadow: 0 10px 26px #302b2910; overflow: hidden; }
+.home-module-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--wine); }
+.home-module-card::after { content: '→'; position: absolute; right: 24px; bottom: 22px; color: var(--wine); font-size: 22px; opacity: .8; transition: transform .15s ease; }
+.home-module-card:hover { border-color: #c5a0ab; box-shadow: 0 14px 32px #302b2920; transform: translateY(-3px); transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.home-module-card:hover::after { transform: translateX(4px); }
+.home-module-card h3 { margin: 22px 0 9px; font: 400 27px/1.15 Georgia, serif; letter-spacing: -.3px; }
+.home-module-card p { max-width: 220px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.home-module-card .badge { align-self: flex-start; padding: 5px 10px; background: #e9dce0; color: var(--wine); font-size: 10px; letter-spacing: .5px; text-transform: uppercase; }
+.home-module-card-pending { background: #f4f0e9; box-shadow: none; filter: saturate(.55); }
+.home-module-card-pending::before { background: #b8aea2; }
+.home-module-card-pending::after { content: '—'; color: var(--muted); }
+.home-module-card-pending:hover { border-color: var(--line); box-shadow: none; transform: none; }
+@media (max-width: 980px) { .module-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .module-cards-grid { grid-template-columns: 1fr; } .home-module-card { min-height: 150px; } }
 .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; background: #f3e8eb; color: var(--wine); font-size: 12px; font-weight: 650; }
 .back-link { display: inline-block; margin-bottom: 24px; font-size: 14px; }
 footer { padding: 24px 6vw; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
@@ -47,6 +65,7 @@ footer { padding: 24px 6vw; color: var(--muted); font-size: 12px; border-top: 1p
 
 [hidden] { display: none !important; }
 button:disabled { opacity: .6; cursor: wait; }
+#inventory-view button:disabled { cursor: not-allowed; }
 
 .workspace { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: calc(100vh - 186px); }
 .sidebar { padding: 32px 20px; border-right: 1px solid var(--line); background: #f2eee6; display: flex; flex-direction: column; }
@@ -160,6 +179,15 @@ input[aria-invalid="true"] { border-color: #a64c61; background: #fff8f8; }
 .licoreria-alert.swal2-toast { box-shadow: 0 8px 30px #302b2920; }
 .licoreria-alert.swal2-toast .swal2-title { font: 600 14px/1.5 system-ui, sans-serif; }
 .licoreria-alert .swal2-image { max-width: 100%; }
+.licoreria-alert.inventory-alert { width: min(560px, calc(100% - 32px)); padding: 30px 34px; }
+.inventory-alert .swal2-html-container { margin: 18px 0 6px; }
+.inventory-alert-form { display: grid; gap: 14px; text-align: left; }
+.inventory-alert-product { margin: 0 0 4px; color: var(--ink); font: 600 16px/1.45 system-ui, sans-serif; }
+.inventory-alert-field { box-sizing: border-box; width: 100%; min-height: 48px; padding: 12px 14px; border: 1px solid #d4cbbf; border-radius: 5px; background: #fff; color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+.inventory-alert-field:focus { outline: 2px solid #b98796; outline-offset: 1px; border-color: var(--wine); }
+.inventory-alert-reason { min-height: 92px; resize: vertical; }
+.inventory-alert .field-help { margin: -4px 0 0; }
+.inventory-alert .swal2-actions { margin-top: 22px; }
 
 .sales-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
 .sales-main { min-width: 0; }

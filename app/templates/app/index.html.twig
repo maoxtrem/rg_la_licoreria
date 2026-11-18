@@ -38,6 +38,7 @@
             <p>Usuario: <strong data-username></strong></p>
             <a id="admin-link" class="button" href="/admin" hidden>Ir a administración <span aria-hidden="true">→</span></a>
         </div>
+        <section id="home-modules" class="home-modules" aria-label="Módulos del sistema"></section>
     </section>
 
     <section id="admin-view" class="dashboard" hidden>
@@ -53,6 +54,7 @@
     {% include 'components/sales.html.twig' %}
     {% include 'components/company.html.twig' %}
     {% include 'components/billing.html.twig' %}
+    {% include 'components/inventory.html.twig' %}
     <section id="module-view" class="dashboard" hidden>
         <p id="module-group" class="eyebrow"></p>
         <h1 id="module-title"></h1>

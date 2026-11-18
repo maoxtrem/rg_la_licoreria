@@ -4,22 +4,44 @@ import { startProducts } from './products.js';
 import { startSales } from './sales.js';
 import { startCompany } from './company.js';
 import { startBilling } from './billing.js';
+import { startInventory } from './inventory.js';
 
 const element = (id) => document.getElementById(id);
 const modules = {
-    '/productos': { key: 'products', title: 'Productos', group: 'Operativos', description: 'Aquí encontrarás tu catálogo de productos.' },
-    '/ventas': { key: 'sales', title: 'Ventas', group: 'Operativos', description: 'Aquí podrás gestionar las ventas de tu negocio.' },
-    '/facturacion': { key: 'billing', title: 'Facturación', group: 'Operativos', description: 'Aquí podrás gestionar la facturación de tu negocio.' },
-    '/inventario': { key: 'inventory', title: 'Inventario', group: 'Operativos', description: 'Aquí podrás consultar y gestionar tus existencias.' },
-    '/empresa': { key: 'company', title: 'Empresa', group: 'Administrativos', description: 'Datos de la empresa para las facturas.' },
-    '/grupos': { key: 'groups', title: 'Grupos', group: 'Administrativos', description: 'Aquí podrás organizar los grupos de trabajo.' },
-    '/usuarios': { key: 'users', title: 'Usuarios', group: 'Administrativos', description: 'Aquí podrás gestionar las cuentas del sistema.' },
-    '/permisos': { key: 'permissions', title: 'Permisos', group: 'Administrativos', description: 'Aquí podrás administrar los permisos de acceso.' },
+    '/productos': { key: 'products', title: 'Productos', group: 'Operativos', description: 'Aquí encontrarás tu catálogo de productos.', ready: true },
+    '/ventas': { key: 'sales', title: 'Ventas', group: 'Operativos', description: 'Aquí podrás gestionar las ventas de tu negocio.', ready: true },
+    '/facturacion': { key: 'billing', title: 'Facturación', group: 'Operativos', description: 'Aquí podrás gestionar la facturación de tu negocio.', ready: true },
+    '/inventario': { key: 'inventory', title: 'Inventario', group: 'Operativos', description: 'Aquí podrás consultar y gestionar tus existencias.', ready: true },
+    '/contabilidad': { key: 'accounting', title: 'Contabilidad', group: 'Operativos', description: 'Aquí podrás consultar y gestionar la contabilidad de tu negocio.', permissioned: false },
+    '/empresa': { key: 'company', title: 'Empresa', group: 'Administrativos', description: 'Datos de la empresa para las facturas.', ready: true },
+    '/grupos': { key: 'groups', title: 'Grupos', group: 'Administrativos', description: 'Aquí podrás organizar los grupos de trabajo.', ready: false },
+    '/usuarios': { key: 'users', title: 'Usuarios', group: 'Administrativos', description: 'Aquí podrás gestionar las cuentas del sistema.', ready: false },
+    '/permisos': { key: 'permissions', title: 'Permisos', group: 'Administrativos', description: 'Aquí podrás administrar los permisos de acceso.', ready: false },
 };
 
 function showView(id) {
     element('loading').hidden = true;
     element(id).hidden = false;
+}
+
+function renderHomeModules() {
+    const container = element('home-modules');
+    container.replaceChildren();
+    for (const group of ['Operativos', 'Administrativos']) {
+        const heading = document.createElement('h2'); heading.className = 'module-cards-heading'; heading.textContent = group;
+        const grid = document.createElement('div'); grid.className = 'module-cards-grid';
+        Object.entries(modules).filter(([, module]) => module.group === group).forEach(([path, module]) => {
+            const card = document.createElement(module.ready ? 'a' : 'article');
+            card.className = 'module-card home-module-card' + (module.ready ? '' : ' module-card-pending');
+            if (module.ready) card.href = path;
+            const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = module.ready ? 'Disponible' : 'Próximamente';
+            const title = document.createElement('h3'); title.textContent = module.title;
+            const description = document.createElement('p'); description.className = 'muted'; description.textContent = module.description;
+            card.append(badge, title, description);
+            grid.append(card);
+        });
+        container.append(heading, grid);
+    }
 }
 
 async function initialize() {
@@ -48,12 +70,13 @@ async function initialize() {
         const isAdmin = data.user.roles.includes('ROLE_ADMIN');
         element('role-label').textContent = isAdmin ? 'Administrador' : 'Usuario';
         element('admin-link').hidden = !isAdmin;
+        renderHomeModules();
 
         element('workspace').hidden = false;
         document.querySelectorAll('[data-nav]').forEach((link) => {
             const path = link.getAttribute('href');
             const section = modules[path];
-            link.hidden = section ? !data.user.permissions?.[section.key]?.view : false;
+            link.hidden = section && section.permissioned !== false ? !data.user.permissions?.[section.key]?.view : false;
             if (path === location.pathname) link.setAttribute('aria-current', 'page');
         });
 
@@ -67,20 +90,22 @@ async function initialize() {
             element('module-title').textContent = module.title;
             element('module-description').textContent = module.description;
             document.title = `${module.title} · La Licorería`;
-            const access = await api(`/api/modules/${module.key}/access`);
-            if (access.response.status === 401) {
-                location.replace('/login');
-                return;
+            const access = module.permissioned === false ? { data: { actions: {} } } : await api(`/api/modules/${module.key}/access`);
+            if (module.permissioned !== false) {
+                if (access.response.status === 401) {
+                    location.replace('/login');
+                    return;
+                }
+                if (access.response.status === 403) {
+                    showView('access-denied-view');
+                    return;
+                }
+                if (!access.response.ok) throw new Error('No se pudo consultar el acceso.');
             }
-            if (access.response.status === 403) {
-                showView('access-denied-view');
-                return;
-            }
-            if (!access.response.ok) throw new Error('No se pudo consultar el acceso.');
-            if (module.key === 'products' || module.key === 'sales' || module.key === 'company' || module.key === 'billing') {
+            if (module.key === 'products' || module.key === 'sales' || module.key === 'company' || module.key === 'billing' || module.key === 'inventory') {
                 const view = `${module.key}-view`;
                 showView(view);
-                const start = { products: startProducts, sales: startSales, company: startCompany, billing: startBilling }[module.key];
+                const start = { products: startProducts, sales: startSales, company: startCompany, billing: startBilling, inventory: startInventory }[module.key];
                 await start({
                     actions: access.data.actions,
                     onAccessLost: () => {

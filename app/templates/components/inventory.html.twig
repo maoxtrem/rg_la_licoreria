@@ -1,0 +1,16 @@
+<section id="inventory-view" class="dashboard" hidden>
+    <p class="eyebrow">Operativos / Control de existencias</p>
+    <div class="page-heading"><div><h1>Inventario</h1><p class="muted">Activa el control solo para los productos que ya quieras administrar.</p></div></div>
+    <div class="catalog-panel">
+        <div class="catalog-toolbar">
+            <form id="inventory-search-form" class="products-filter-field"><label for="inventory-search">Buscar producto o código de barras</label><input id="inventory-search" type="search" maxlength="180" placeholder="Nombre o código de barras"></form>
+        </div>
+        <p class="field-help">Los productos sin inventario activo se consideran ilimitados y no afectan la facturación.</p>
+        <p id="inventory-loading" class="catalog-state" role="status">Cargando productos…</p>
+        <p id="inventory-empty" class="catalog-state" hidden>No hay productos que coincidan con la búsqueda.</p>
+        <div id="inventory-table-container" class="table-scroll" hidden>
+            <table class="products-table"><caption class="sr-only">Productos y existencias</caption><thead><tr><th>Producto</th><th>Código de barras</th><th>Control</th><th>Stock</th><th>Costo actual</th><th>Reservado</th><th>Disponible</th><th>Acciones</th></tr></thead><tbody id="inventory-rows"></tbody></table>
+        </div>
+        <div id="inventory-pagination" class="catalog-pagination" hidden><p id="inventory-range" class="muted small-text"></p><nav class="pagination-buttons" aria-label="Páginas de inventario"><button id="inventory-previous" class="button-secondary button-small" type="button">← Anterior</button><span id="inventory-page-number" aria-live="polite"></span><button id="inventory-next" class="button-secondary button-small" type="button">Siguiente →</button></nav></div>
+    </div>
+</section>

@@ -47,6 +47,88 @@ export async function confirmDelete(name) {
     return result.isConfirmed;
 }
 
+export async function confirmInvoiceCancel(number) {
+    const result = await Swal.fire(options({
+        icon: 'warning', title: '¿Cancelar el registro pendiente?',
+        text: `Se liberará el inventario reservado por ${number}.`,
+        showCancelButton: true, confirmButtonText: 'Cancelar registro', cancelButtonText: 'Conservar registro',
+        focusCancel: true,
+    }));
+    return result.isConfirmed;
+}
+
+export async function inventoryReceiptDialog(name, baseCost) {
+    const quantity = document.createElement('input');
+    quantity.type = 'number'; quantity.min = '1'; quantity.step = '1'; quantity.max = '2147483647'; quantity.placeholder = 'Cantidad recibida';
+    const total = document.createElement('input');
+    total.type = 'number'; total.min = '0'; total.step = '100'; total.max = '2147483647'; total.placeholder = 'Costo total del lote (COP)';
+    const hint = document.createElement('p'); hint.className = 'field-help'; hint.textContent = 'Costo actual de referencia: $' + Number(baseCost).toLocaleString('es-CO') + ' por unidad.';
+    const content = document.createElement('div'); content.className = 'inventory-alert-form';
+    const product = document.createElement('p'); product.textContent = name;
+    product.className = 'inventory-alert-product';
+    quantity.className = 'inventory-alert-field'; total.className = 'inventory-alert-field';
+    quantity.setAttribute('aria-label', 'Cantidad recibida'); total.setAttribute('aria-label', 'Costo total del lote');
+    content.append(product, quantity, total, hint);
+    const result = await Swal.fire(options({
+        icon: 'question', title: 'Agregar existencias', text: name, html: content,
+        showCancelButton: true, confirmButtonText: 'Registrar entrada', cancelButtonText: 'Cancelar',
+        didOpen: () => quantity.focus(),
+        preConfirm: () => {
+            const count = Number(quantity.value), cost = Number(total.value);
+            if (!Number.isInteger(count) || count < 1 || !Number.isInteger(cost) || cost < 0) {
+                Swal.showValidationMessage('Ingresa una cantidad válida y el costo total del lote.');
+                return false;
+            }
+            return { quantity: count, totalCost: cost };
+        },
+    }));
+    if (!result.isConfirmed) return null;
+    const values = result.value;
+    const unitCost = values.totalCost / values.quantity;
+    if (Number(baseCost) > 0 && unitCost < Number(baseCost) * 0.8) {
+        const warning = await Swal.fire(options({
+            icon: 'warning', title: 'Posible costo incorrecto',
+            text: 'El costo unitario calculado es $' + Math.round(unitCost).toLocaleString('es-CO') + ', más de 20% por debajo del costo actual de $' + Number(baseCost).toLocaleString('es-CO') + '.',
+            showCancelButton: true, confirmButtonText: 'Continuar de todas formas', cancelButtonText: 'Revisar datos',
+            focusCancel: true,
+        }));
+        if (!warning.isConfirmed) return null;
+    }
+    return values;
+}
+
+export async function inventoryRemovalDialog(name, available) {
+    const quantity = document.createElement('input');
+    quantity.type = 'number'; quantity.min = '1'; quantity.max = String(Math.max(0, available)); quantity.step = '1'; quantity.placeholder = 'Cantidad a retirar';
+    const content = document.createElement('div');
+    const product = document.createElement('p'); product.textContent = name;
+    content.className = 'inventory-alert-form'; product.className = 'inventory-alert-product';
+    quantity.className = 'inventory-alert-field'; quantity.setAttribute('aria-label', 'Cantidad a retirar');
+    const reason = document.createElement('textarea'); reason.className = 'inventory-alert-field inventory-alert-reason'; reason.maxLength = 255; reason.placeholder = 'Motivo del retiro'; reason.setAttribute('aria-label', 'Motivo del retiro');
+    const help = document.createElement('p'); help.className = 'field-help'; help.textContent = 'Disponible para retirar: ' + available + ' unidades.';
+    content.append(product, quantity, reason, help);
+    const result = await Swal.fire(options({
+        icon: 'warning', title: 'Retirar existencias', text: name, html: content,
+        showCancelButton: true, confirmButtonText: 'Retirar unidades', cancelButtonText: 'Cancelar',
+        didOpen: () => quantity.focus(),
+        preConfirm: () => {
+            const count = Number(quantity.value);
+            const reasonText = reason.value.trim();
+            if (!Number.isInteger(count) || count < 1 || count > available) {
+                Swal.showValidationMessage('La cantidad debe estar entre 1 y ' + available + '.');
+                return false;
+            }
+            if (!reasonText) {
+                Swal.showValidationMessage('Escribe el motivo del retiro.');
+                reason.focus();
+                return false;
+            }
+            return { quantity: count, reason: reasonText };
+        },
+    }));
+    return result.isConfirmed ? result.value : null;
+}
+
 
 export function showLoading(title) {
     return Swal.fire(options({ title, allowOutsideClick: false, allowEscapeKey: false, didOpen: () => Swal.showLoading() }));

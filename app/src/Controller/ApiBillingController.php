@@ -25,7 +25,7 @@ class ApiBillingController extends AbstractController
     {
         $pagination = $this->input->pagination($request);
         $status = $request->query->get('status');
-        if ($status !== null && !in_array($status, ['pending', 'paid'], true)) throw new CartException(422, 'Estado no válido.');
+        if ($status !== null && !in_array($status, ['pending', 'paid', 'cancelled'], true)) throw new CartException(422, 'Estado no válido.');
         $criteria = $status ? ['status' => $status] : [];
         $number = trim($request->query->get('number', ''));
         if ($number !== '') {
@@ -86,6 +86,14 @@ class ApiBillingController extends AbstractController
     {
         $invoice = $this->invoicing->change($id, $this->input->read($request, 'billing'), true);
         return $this->json(['data' => $invoice->toArray(), 'printing' => $printing->queue($invoice)], headers: ['Cache-Control' => 'no-store']);
+    }
+
+    #[Route('/{id}/cancel', name: 'api_billing_cancel', defaults: ['_permission_action' => 'update'], requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function cancel(int $id, Request $request): JsonResponse
+    {
+        $this->input->checkCsrf($request, 'billing');
+        $invoice = $this->invoicing->cancel($id);
+        return $this->json(['data' => $invoice->toArray()], headers: ['Cache-Control' => 'no-store']);
     }
 
     #[Route('/{id}/print', name: 'api_billing_print', defaults: ['_permission_action' => 'view'], requirements: ['id' => '\d+'], methods: ['POST'])]

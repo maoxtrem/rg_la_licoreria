@@ -6,6 +6,7 @@ use App\Entity\Company;
 use App\Entity\Invoice;
 use App\Entity\Product;
 use App\Entity\User;
+use App\Inventory\InventoryService;
 use App\Sales\Cart;
 use App\Sales\CartException;
 use Doctrine\DBAL\LockMode;
@@ -14,7 +15,7 @@ use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 class Invoicing
 {
-    public function __construct(private readonly EntityManagerInterface $em, private readonly Cart $cart) {}
+    public function __construct(private readonly EntityManagerInterface $em, private readonly Cart $cart, private readonly InventoryService $inventory) {}
 
     public function checkout(SessionInterface $session, User $user, array $data): Invoice
     {
@@ -37,6 +38,10 @@ class Invoicing
             $invoice = new Invoice($data['checkout_key'], $user->getId(), $cart);
             if ($company) $invoice->pay($company, $data['cash_received'] ?? null, $data['payment_method'] ?? 'cash', $data['transfer_received'] ?? null);
             $this->em->persist($invoice);
+            $this->em->flush();
+            $quantities = array_column($cart['items'], 'quantity', 'product_id');
+            if ($company) $this->inventory->consumeCart($cart['reservation_key'], $cart['items']);
+            else $this->inventory->attachCartToInvoice($invoice->getId(), $cart['reservation_key'], $quantities);
             return $invoice;
         });
         // Clear only after the database commit; a repeated checkout returns the same record.
@@ -58,10 +63,23 @@ class Invoicing
             if ($invoice->getRevision() !== $data['revision']) throw new CartException(409, 'El registro cambió en otra ventana. Recarga sus datos.');
             if ($pay) {
                 $invoice->pay($this->company(), $data['cash_received'] ?? null, $data['payment_method'] ?? 'cash', $data['transfer_received'] ?? null);
+                $this->inventory->consumeInvoice($invoice->getId(), $invoice->getItems());
             } else {
                 [$items, $total] = $this->items($data['items'], $invoice->getItems());
+                $this->inventory->reserveInvoice($invoice->getId(), $items);
                 $invoice->replaceItems($items, $total);
             }
+            return $invoice;
+        });
+    }
+
+    public function cancel(int $id): Invoice
+    {
+        return $this->em->wrapInTransaction(function () use ($id): Invoice {
+            $invoice = $this->em->find(Invoice::class, $id, LockMode::PESSIMISTIC_WRITE)
+                ?? throw new CartException(404, 'No encontramos el registro.');
+            $invoice->cancel();
+            $this->inventory->releaseInvoice($id);
             return $invoice;
         });
     }

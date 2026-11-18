@@ -26,6 +26,7 @@ class ApiSecurityController extends AbstractController
             'groups' => $csrf->getToken('groups')->getValue(),
             'permissions' => $csrf->getToken('permissions')->getValue(),
             'users' => $csrf->getToken('users')->getValue(),
+            'inventory' => $csrf->getToken('inventory')->getValue(),
         ], headers: ['Cache-Control' => 'no-store']);
     }
 
