@@ -70,7 +70,6 @@ async function initialize() {
         const isAdmin = data.user.roles.includes('ROLE_ADMIN');
         element('role-label').textContent = isAdmin ? 'Administrador' : 'Usuario';
         element('admin-link').hidden = !isAdmin;
-        renderHomeModules();
 
         element('workspace').hidden = false;
         document.querySelectorAll('[data-nav]').forEach((link) => {
@@ -134,6 +133,7 @@ async function initialize() {
             if (!admin.response.ok) throw new Error('No se pudo consultar la administración.');
             element('admin-message').textContent = admin.data.message ?? admin.data.error;
             document.title = 'Administración · La Licorería';
+            renderHomeModules();
             showView('admin-view');
         } else {
             document.title = 'Inicio · La Licorería';

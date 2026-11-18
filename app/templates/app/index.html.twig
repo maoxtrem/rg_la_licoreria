@@ -38,7 +38,6 @@
             <p>Usuario: <strong data-username></strong></p>
             <a id="admin-link" class="button" href="/admin" hidden>Ir a administración <span aria-hidden="true">→</span></a>
         </div>
-        <section id="home-modules" class="home-modules" aria-label="Módulos del sistema"></section>
     </section>
 
     <section id="admin-view" class="dashboard" hidden>
@@ -46,6 +45,7 @@
         <p class="eyebrow">Administración</p>
         <h1>Panel de administración.</h1>
         <div class="card account-card"><p id="admin-message" role="status"></p></div>
+        <section id="home-modules" class="home-modules" aria-label="Módulos del sistema"></section>
     </section>
     <section id="access-denied-view" class="dashboard" hidden>
         {% include 'components/access-denied.html.twig' %}
