@@ -146,6 +146,12 @@ tarea `RG La Licoreria - Recuperar impresora USB`, que arranca al iniciar sesió
 y se inicia también al instalarla. Cada 10 segundos comprueba únicamente el
 dispositivo `2aaf:6015` y lo adjunta a `Ubuntu-22.04` si está presente y no está
 adjuntado. La impresora debe haberse compartido previamente con `usbipd bind`.
+Un disparador adicional cada minuto vuelve a iniciar el monitor si se detuvo;
+no crea otra instancia cuando ya está activo. También se configuran tres
+reinicios ante errores. El registro de arranques, reconexiones y errores queda
+en `%LOCALAPPDATA%\RGLaLicoreria\PrinterRecovery.log` (con una copia rotada).
+Después de cerrar WSL, el monitor vuelve a iniciar la distribución para adjuntar
+la impresora. Para mantener WSL apagado, detener y deshabilitar la tarea.
 Si cambia la distribución WSL, ajustar `Watch-Printer.ps1` y reinstalar.
 Para retirarla, detener y eliminar esa tarea desde el Programador de tareas.
 
