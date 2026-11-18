@@ -124,6 +124,14 @@ button:disabled { opacity: .6; cursor: wait; }
 .table-action { min-height: 36px; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--wine); cursor: pointer; font: 600 12px system-ui, sans-serif; }
 .table-action:hover { background: #f0e5e8; }
 .table-action-danger { color: #93433b; }
+.inventory-switch { position: relative; display: inline-flex; width: 42px; height: 24px; vertical-align: middle; cursor: pointer; }
+.inventory-switch input { position: absolute; width: 1px; height: 1px; margin: -1px; opacity: 0; clip: rect(0 0 0 0); }
+.inventory-switch-track { position: absolute; inset: 0; border: 1px solid #c8bfb4; border-radius: 999px; background: #d9d1c7; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.inventory-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fffdf9; box-shadow: 0 1px 3px #302b2940; transition: transform .18s ease; }
+.inventory-switch input:checked + .inventory-switch-track { border-color: var(--wine); background: var(--wine); }
+.inventory-switch input:checked + .inventory-switch-track::after { transform: translateX(18px); }
+.inventory-switch input:focus-visible + .inventory-switch-track { outline: 2px solid #b98796; outline-offset: 2px; }
+.inventory-switch input:disabled + .inventory-switch-track { cursor: not-allowed; opacity: .6; }
 .catalog-state { padding: 64px 24px; margin: 0; text-align: center; color: var(--muted); }
 .catalog-state h2 { color: var(--ink); font-size: 28px; }
 .catalog-state p { max-width: 380px; margin: 12px auto; font-size: 14px; }

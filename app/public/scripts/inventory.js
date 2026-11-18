@@ -65,7 +65,11 @@ export async function startInventory({ actions, onAccessLost }) {
         const rows = result.data.map((row) => {
             const tr = document.createElement('tr');
             tr.append(Object.assign(document.createElement('td'), { textContent: row.name }), Object.assign(document.createElement('td'), { textContent: row.barcode, className: 'barcode-cell' }));
-            const control = document.createElement('td'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = !row.unlimited; checkbox.disabled = !permissions.update; checkbox.setAttribute('aria-label', `Controlar inventario de ${row.name}`); control.append(checkbox);
+            const control = document.createElement('td');
+            const switchLabel = document.createElement('label'); switchLabel.className = 'inventory-switch';
+            const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = !row.unlimited; checkbox.disabled = !permissions.update; checkbox.setAttribute('aria-label', `Controlar inventario de ${row.name}`);
+            const switchTrack = document.createElement('span'); switchTrack.className = 'inventory-switch-track'; switchTrack.setAttribute('aria-hidden', 'true');
+            switchLabel.append(checkbox, switchTrack); control.append(switchLabel);
             const stockCell = Object.assign(document.createElement('td'), { textContent: String(row.stock) });
             const reserved = Object.assign(document.createElement('td'), { textContent: row.unlimited ? '—' : String(row.reserved) });
             const available = Object.assign(document.createElement('td'), { textContent: row.unlimited ? 'Ilimitado' : String(row.available) });
